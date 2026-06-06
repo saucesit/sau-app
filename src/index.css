@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+:root {
+  --primary: #002F6C;
+  --primary-light: #003f94;
+  --accent: #F5C518;
+  --accent-dark: #d4a800;
+  --bg: #f0f2f5;
+  --card-bg: #ffffff;
+  --text: #1a1a1a;
+  --text-muted: #666;
+  --shadow: 0 4px 12px rgba(0,0,0,0.10);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Outfit', system-ui, sans-serif;
+  background-color: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
