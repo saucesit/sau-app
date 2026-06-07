@@ -40,7 +40,6 @@ function RequiereAuth({ children }) {
 // Requiere ser SAU admin (solo Facundo)
 function ProtegidoAdmin({ children }) {
   const { user, loading, perfilCargado, profile } = useAuth()
-  console.log('[AdminGuard]', { loading, perfilCargado, user: !!user, profile, es_sau_admin: profile?.es_sau_admin })
   if (loading || !perfilCargado) return <Splash />
   if (!user) return <Navigate to="/login" replace />
   if (!profile?.es_sau_admin) return <Navigate to="/" replace />
