@@ -30,7 +30,6 @@ export default function Perfil() {
   const [error,          setError]          = useState(null)
   const [copiado,        setCopiado]        = useState(false)
   const [modulos,        setModulos]        = useState([])
-  const [guardandoMod,   setGuardandoMod]   = useState(false)
 
   // Cargar datos actuales de la empresa
   useEffect(() => {
@@ -45,20 +44,8 @@ export default function Perfil() {
     setModulos(modulosActivos)
   }, [empresaActiva, modulosActivos])
 
-  async function toggleModulo(id) {
-    if (!esAdmin) return
-    const mod = MODULOS.find(m => m.id === id)
-    if (mod?.nucleo) return  // el núcleo nunca se desactiva
-    const nuevos = modulos.includes(id)
-      ? modulos.filter(m => m !== id)
-      : [...modulos, id]
-    setModulos(nuevos)
-    setGuardandoMod(true)
-    await supabase.from('empresa')
-      .update({ modulos_activos: nuevos })
-      .eq('id', empresaActivaId)
-    setGuardandoMod(false)
-  }
+  // Los módulos los activa/desactiva SAU desde el panel de admin, no el dueño.
+  // Acá el dueño solo los ve (más arriba, en modo lectura).
 
   async function guardar() {
     if (!nombre.trim()) return setError('El nombre no puede estar vacío')
@@ -212,58 +199,38 @@ export default function Perfil() {
         />
       </Campo>
 
-      {/* ── MÓDULOS DEL SISTEMA ── */}
+      {/* ── MÓDULOS DEL SISTEMA (solo lectura — los activa SAU) ── */}
       {esAdmin && (
         <>
           <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest mt-2">
-            Módulos activos
-            {guardandoMod && <span className="ml-2 text-indigo-400 normal-case font-normal">Guardando…</span>}
+            Módulos de tu negocio
           </p>
           <p className="text-xs text-slate-400 -mt-2 mb-1">
-            Activá solo lo que usa tu negocio. Podés cambiarlo cuando quieras.
+            Estos son los módulos activos en tu cuenta. Para sumar o quitar alguno, escribinos a SAU.
           </p>
           <div className="grid gap-2">
-            {MODULOS.map(mod => {
-              const activo = modulos.includes(mod.id)
-              return (
-                <button
-                  key={mod.id}
-                  onClick={() => toggleModulo(mod.id)}
-                  disabled={mod.nucleo}
-                  className={`w-full flex items-center gap-4 px-4 py-4 rounded-3xl border-2 text-left transition-all active:scale-[0.98] ${
-                    activo
-                      ? 'bg-indigo-50 border-indigo-200'
-                      : 'bg-white border-slate-100 opacity-50'
-                  } ${mod.nucleo ? 'cursor-default' : ''}`}
-                >
-                  <span className="text-3xl shrink-0">{mod.icon}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className={`text-sm font-bold ${activo ? 'text-indigo-800' : 'text-slate-500'}`}>
-                        {mod.titulo}
-                      </p>
-                      {mod.nucleo && (
-                        <span className="text-[0.6rem] bg-indigo-100 text-indigo-500 font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">
-                          Base
-                        </span>
-                      )}
-                    </div>
-                    <p className={`text-xs mt-0.5 leading-snug ${activo ? 'text-indigo-500' : 'text-slate-400'}`}>
-                      {mod.descripcion}
-                    </p>
+            {MODULOS.filter(mod => modulos.includes(mod.id)).map(mod => (
+              <div
+                key={mod.id}
+                className="w-full flex items-center gap-4 px-4 py-4 rounded-3xl border-2 border-indigo-200 bg-indigo-50 text-left"
+              >
+                <span className="text-3xl shrink-0">{mod.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-bold text-indigo-800">{mod.titulo}</p>
+                    {mod.nucleo && (
+                      <span className="text-[0.6rem] bg-indigo-100 text-indigo-500 font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">
+                        Base
+                      </span>
+                    )}
                   </div>
-                  {!mod.nucleo && (
-                    <div className={`shrink-0 w-11 h-6 rounded-full transition-all relative ${
-                      activo ? 'bg-indigo-500' : 'bg-slate-200'
-                    }`}>
-                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${
-                        activo ? 'left-6' : 'left-1'
-                      }`} />
-                    </div>
-                  )}
-                </button>
-              )
-            })}
+                  <p className="text-xs mt-0.5 leading-snug text-indigo-500">
+                    {mod.descripcion}
+                  </p>
+                </div>
+                <span className="shrink-0 text-emerald-500 text-lg font-bold">✓</span>
+              </div>
+            ))}
           </div>
         </>
       )}
