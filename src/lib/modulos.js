@@ -52,10 +52,27 @@ export const MODULOS = [
     descripcion: 'Cuenta corriente de clientes de confianza, con historial y límites',
     nucleo:      false,
   },
+  {
+    id:          'presupuestos',
+    icon:        '📄',
+    titulo:      'Presupuestos',
+    descripcion: 'Armá y enviá presupuestos por WhatsApp con catálogo de ítems y precios',
+    nucleo:      false,
+  },
+  {
+    id:          'agente',
+    icon:        '🤖',
+    titulo:      'Agente de WhatsApp',
+    descripcion: 'Un asistente IA con nombre propio que atiende a tus clientes por WhatsApp y opera en SAU',
+    nucleo:      false,
+  },
 ]
 
-/** IDs de módulos que vienen activos por defecto al crear una empresa */
-export const MODULOS_DEFAULT = MODULOS.map(m => m.id)
+/**
+ * IDs de módulos que vienen activos por defecto al crear una empresa.
+ * El agente es un módulo premium opt-in: NO viene por defecto.
+ */
+export const MODULOS_DEFAULT = MODULOS.filter(m => m.id !== 'agente').map(m => m.id)
 
 /** Devuelve el objeto de módulo por ID */
 export function getModulo(id) {

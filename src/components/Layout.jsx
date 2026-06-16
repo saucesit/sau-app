@@ -9,13 +9,15 @@ const ROLES_LABEL = {
 }
 
 const TITULOS = {
-  '/vender':    'Nueva venta',
-  '/caja':      'Caja',
-  '/historial': 'Historial',
-  '/compras':   'Compras y Gastos',
-  '/equipo':    'Mi equipo',
-  '/contadora': 'Mis clientes',
-  '/perfil':    'Mi negocio',
+  '/vender':              'Nueva venta',
+  '/caja':                'Caja',
+  '/historial':           'Historial',
+  '/compras':             'Compras y Gastos',
+  '/equipo':              'Mi equipo',
+  '/contadora':           'Mis clientes',
+  '/perfil':              'Mi negocio',
+  '/presupuestos':        'Presupuestos',
+  '/presupuestos/nuevo':  'Nuevo presupuesto',
 }
 
 // Todas las pestañas posibles.
@@ -29,9 +31,10 @@ const TODAS_LAS_TABS = [
   { to: '/compras',   icon: '🛍️', label: 'Compras',   end: false, permiso: 'compras.crear',    modulo: 'compras' },
   { to: '/equipo',    icon: '👥', label: 'Equipo',    end: false, permiso: 'empresa.admin',     modulo: 'equipo' },
   { to: '/stock',     icon: '📦', label: 'Stock',     end: false, permiso: 'ventas.ver',        modulo: 'stock' },
-  { to: '/fiado',     icon: '📒', label: 'Fiado',     end: false, permiso: 'ventas.crear',      modulo: 'fiado' },
-  { to: '/contadora', icon: '📊', label: 'Clientes',  end: false, permiso: 'contadora.panel',  modulo: null },
-  { to: '/importar',  icon: '🔄', label: 'Importar',  end: false, permiso: 'empresa.admin',     modulo: null },
+  { to: '/fiado',         icon: '📒', label: 'Fiado',        end: false, permiso: 'ventas.crear',     modulo: 'fiado'        },
+  { to: '/presupuestos', icon: '📄', label: 'Presupuestos', end: false, permiso: 'ventas.crear',  modulo: 'presupuestos' },
+  { to: '/contadora',    icon: '📊', label: 'Clientes',     end: false, permiso: 'contadora.panel', modulo: null },
+  { to: '/importar',  icon: '🔄', label: 'Importar',  end: false, permiso: 'empresa.admin',     modulo: ['ventas', 'stock'] },
 ]
 
 // En estas rutas mostramos botón volver (pantallas de acción o detalle)
@@ -39,7 +42,7 @@ const RUTAS_CON_VOLVER = ['/vender', '/caja']
 
 function TabBar({ tabs }) {
   return (
-    <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[500px] bg-white/90 backdrop-blur border-t border-slate-100 flex z-50">
+    <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[500px] bg-zinc-900/95 backdrop-blur border-t border-zinc-800 flex z-50">
       {tabs.map((t) => (
         <NavLink
           key={t.to}
@@ -47,7 +50,7 @@ function TabBar({ tabs }) {
           end={t.end}
           className={({ isActive }) =>
             `flex-1 flex flex-col items-center gap-0.5 py-3 text-xs font-semibold transition-all ${
-              isActive ? 'text-indigo-600 scale-105' : 'text-slate-400'
+              isActive ? 'text-emerald-400 scale-105' : 'text-zinc-500'
             }`
           }
         >
@@ -64,29 +67,33 @@ export default function Layout() {
   const navigate = useNavigate()
   const location = useLocation()
 
-  // Mostrar tab solo si el módulo está activo en la empresa Y el usuario tiene permiso
+  // Mostrar tab solo si el módulo está activo en la empresa Y el usuario tiene permiso.
+  // t.modulo puede ser null (siempre visible), un string, o un array (basta con uno activo).
+  const moduloActivo = (m) =>
+    m === null || (Array.isArray(m) ? m.some(x => tieneModulo(x)) : tieneModulo(m))
   const tabs = TODAS_LAS_TABS.filter(t =>
-    (t.modulo === null || tieneModulo(t.modulo)) &&
+    moduloActivo(t.modulo) &&
     (t.permiso === null || tienePermiso(t.permiso))
   )
 
   const esInicio         = location.pathname === '/'
-  const esDetalleCliente = location.pathname.startsWith('/contadora/') && location.pathname !== '/contadora'
-  const esDetalleTareas  = location.pathname.startsWith('/equipo/tareas/')
-  const conVolver        = RUTAS_CON_VOLVER.includes(location.pathname) || esDetalleCliente || esDetalleTareas || location.pathname === '/perfil'
-  const volverA          = esDetalleCliente ? '/contadora' : esDetalleTareas ? '/equipo' : '/'
-  const labelVolver      = esDetalleCliente ? '← Clientes' : esDetalleTareas ? '← Equipo' : '← Inicio'
-  const titulo           = TITULOS[location.pathname] || (esDetalleCliente ? 'Detalle cliente' : esDetalleTareas ? 'Configurar tareas' : '')
+  const esDetalleCliente  = location.pathname.startsWith('/contadora/') && location.pathname !== '/contadora'
+  const esDetalleTareas   = location.pathname.startsWith('/equipo/tareas/')
+  const esDetallePresup   = /^\/presupuestos\/[^/]+$/.test(location.pathname) && location.pathname !== '/presupuestos/nuevo'
+  const conVolver         = RUTAS_CON_VOLVER.includes(location.pathname) || esDetalleCliente || esDetalleTareas || esDetallePresup || location.pathname === '/perfil' || location.pathname === '/presupuestos/nuevo'
+  const volverA           = esDetalleCliente ? '/contadora' : esDetalleTareas ? '/equipo' : esDetallePresup ? '/presupuestos' : location.pathname === '/presupuestos/nuevo' ? '/presupuestos' : '/'
+  const labelVolver       = esDetalleCliente ? '← Clientes' : esDetalleTareas ? '← Equipo' : (esDetallePresup || location.pathname === '/presupuestos/nuevo') ? '← Presupuestos' : '← Inicio'
+  const titulo            = TITULOS[location.pathname] || (esDetalleCliente ? 'Detalle cliente' : esDetalleTareas ? 'Configurar tareas' : esDetallePresup ? 'Presupuesto' : '')
 
   return (
-    <div className="max-w-[500px] mx-auto min-h-screen bg-slate-50 pb-24">
+    <div className="max-w-[500px] mx-auto min-h-screen bg-zinc-950 pb-24">
 
       {/* Header */}
-      <header className="bg-indigo-600 text-white px-5 pt-5 pb-6 rounded-b-[2rem] shadow-xl sticky top-0 z-40">
+      <header className="bg-zinc-900 text-white px-5 pt-5 pb-6 rounded-b-[2rem] border-b border-zinc-800 shadow-xl sticky top-0 z-40">
         {esInicio ? (
           <div className="flex justify-between items-center">
             <div>
-              <p className="text-[0.65rem] uppercase tracking-widest text-indigo-300 mb-0.5">
+              <p className="text-[0.65rem] uppercase tracking-widest text-emerald-400 mb-0.5">
                 {empresaActiva ? empresaActiva.nombre_fantasia || empresaActiva.razon_social : 'Sin empresa'}
               </p>
               <h1 className="text-xl font-extrabold leading-tight">
@@ -122,7 +129,7 @@ export default function Layout() {
               {conVolver && (
                 <button
                   onClick={() => navigate(volverA)}
-                  className="bg-white text-indigo-600 font-bold text-sm px-4 py-2 rounded-2xl shadow-md active:scale-95 transition-all"
+                  className="bg-zinc-800 text-zinc-200 border border-zinc-700 font-bold text-sm px-4 py-2 rounded-2xl active:scale-95 transition-all"
                 >
                   {labelVolver}
                 </button>

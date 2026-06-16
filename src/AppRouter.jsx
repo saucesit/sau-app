@@ -17,10 +17,46 @@ import ContadoraEmpresa from './pages/ContadoraEmpresa'
 import Perfil from './pages/Perfil'
 import Unirse from './pages/Unirse'
 import AdminSAU from './pages/AdminSAU'
+import AdminContadora from './pages/AdminContadora'
 import Landing from './pages/Landing'
 import Respuesta from './pages/Respuesta'
 import Importar from './pages/Importar'
+import Onboarding from './pages/Onboarding'
+import Cuestionario, { preguntasParaModulos } from './pages/Cuestionario'
+import Presupuestos from './pages/Presupuestos'
+import PresupuestoNuevo from './pages/PresupuestoNuevo'
+import PresupuestoNuevoPlantilla from './pages/PresupuestoNuevoPlantilla'
+import PresupuestoVer from './pages/PresupuestoVer'
+import PedidoPublico from './pages/PedidoPublico'
+
+// Elige el formulario de presupuesto según el modo de la empresa
+function PresupuestoNuevoSwitch() {
+  const { empresaActiva } = useAuth()
+  return empresaActiva?.presupuesto_modo === 'plantillas'
+    ? <PresupuestoNuevoPlantilla />
+    : <PresupuestoNuevo />
+}
 import KioscoFiado from './App' // prototipo de fiado (Kiosco de Carlitos), se conserva intacto
+
+// Flujo de primer ingreso:
+//  1. Onboarding personalizado (si hay análisis IA)
+//  2. Cuestionario de configuración (si no respondió todavía)
+//  3. Dashboard normal
+function DashboardOOnboarding() {
+  const { empresaActiva } = useAuth()
+  const ob     = empresaActiva?.onboarding
+  const config = empresaActiva?.configuracion
+  const mods   = empresaActiva?.modulos_activos || []
+
+  // El cuestionario se arma según los módulos activos de la empresa:
+  // cada cliente responde solo sobre lo suyo. Si no hay preguntas para
+  // sus módulos, no se muestra.
+  const necesitaCuestionario = preguntasParaModulos(mods).length > 0
+
+  if (ob && !ob.completado)  return <Onboarding />
+  if (necesitaCuestionario && (config === undefined || config === null)) return <Cuestionario />
+  return <Dashboard />
+}
 
 function Splash() {
   return (
@@ -42,19 +78,32 @@ function RequiereAuth({ children }) {
 // Requiere ser SAU admin (solo Facundo)
 function ProtegidoAdmin({ children }) {
   const { user, loading, perfilCargado, profile } = useAuth()
-  if (loading || !perfilCargado) return <Splash />
+  if (loading) return <Splash />
   if (!user) return <Navigate to="/login" replace />
-  if (!profile?.es_sau_admin) return <Navigate to="/" replace />
+  if (!perfilCargado) return <Splash />
+  if (!profile?.es_sau_admin) return <Navigate to="/login" replace />
   return children
 }
 
-// Requiere auth + empresa configurada. Sin empresa → onboarding.
+// Requiere ser contadora SAU (Rocío y cualquier contadora futura)
+function ProtegidoContadora({ children }) {
+  const { user, loading, perfilCargado, profile } = useAuth()
+  if (loading) return <Splash />
+  if (!user) return <Navigate to="/login" replace />
+  if (!perfilCargado) return <Splash />
+  if (!profile?.es_sau_contadora && !profile?.es_sau_admin) return <Navigate to="/login" replace />
+  return children
+}
+
+// Requiere auth + empresa configurada. Admin/contadora van directo a sus paneles.
 function Protegido({ children }) {
-  const { user, loading, perfilCargado, membresias, isSupabaseConfigured } = useAuth()
+  const { user, loading, perfilCargado, membresias, isSupabaseConfigured, profile } = useAuth()
   if (!isSupabaseConfigured) return <Navigate to="/login" replace />
   if (loading) return <Splash />
   if (!user) return <Navigate to="/login" replace />
   if (!perfilCargado) return <Splash />
+  if (profile?.es_sau_admin) return <Navigate to="/sau-admin" replace />
+  if (profile?.es_sau_contadora) return <Navigate to="/contadora-admin" replace />
   if (membresias.length === 0) return <Navigate to="/registro" replace />
   return children
 }
@@ -69,6 +118,7 @@ export default function AppRouter() {
           <Route path="/unirse" element={<Unirse />} />
           <Route path="/prototipo" element={<KioscoFiado />} />
           <Route path="/quejate" element={<Landing />} />
+          <Route path="/pedir/:empresaId" element={<PedidoPublico />} />
           <Route path="/r/:id" element={<Respuesta />} />
 
           <Route
@@ -78,7 +128,7 @@ export default function AppRouter() {
               </Protegido>
             }
           >
-            <Route path="/" element={<Dashboard />} />
+            <Route path="/" element={<DashboardOOnboarding />} />
             <Route path="/vender" element={<VentaNueva />} />
             <Route path="/caja" element={<Caja />} />
             <Route path="/historial" element={<Historial />} />
@@ -86,6 +136,9 @@ export default function AppRouter() {
             <Route path="/equipo" element={<Equipo />} />
             <Route path="/stock" element={<Stock />} />
             <Route path="/fiado" element={<Fiado />} />
+            <Route path="/presupuestos" element={<Presupuestos />} />
+            <Route path="/presupuestos/nuevo" element={<PresupuestoNuevoSwitch />} />
+            <Route path="/presupuestos/:id" element={<PresupuestoVer />} />
             <Route path="/equipo/tareas/:membresiaId" element={<EquipoTareas />} />
             <Route path="/contadora" element={<Contadora />} />
             <Route path="/contadora/:empresaId" element={<ContadoraEmpresa />} />
@@ -94,6 +147,7 @@ export default function AppRouter() {
           </Route>
 
           <Route path="/sau-admin" element={<ProtegidoAdmin><AdminSAU /></ProtegidoAdmin>} />
+          <Route path="/contadora-admin" element={<ProtegidoContadora><AdminContadora /></ProtegidoContadora>} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

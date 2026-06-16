@@ -1,7 +1,211 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { formatPesos, hoyISO } from '../lib/format'
+
+// ── Lector de factura por foto ────────────────────────────────────
+function FormFotoFactura({ empresaActivaId, userId, esPractica, onGuardado }) {
+  const [fase,     setFase]     = useState('idle') // idle | leyendo | revision | guardando | guardado
+  const [fotoURL,  setFotoURL]  = useState(null)
+  const [factura,  setFactura]  = useState(null)
+  const [alertas,  setAlertas]  = useState([])
+  const [error,    setError]    = useState(null)
+  const inputRef = useRef()
+
+  async function onFoto(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    setFase('leyendo')
+    setError(null)
+
+    try {
+      // Subir foto a Storage
+      const ext      = file.name.split('.').pop() || 'jpg'
+      const fileName = `facturas/${empresaActivaId}-${Date.now()}.${ext}`
+      const { error: upErr } = await supabase.storage
+        .from('consultas')
+        .upload(fileName, file, { contentType: file.type, upsert: false })
+      if (upErr) throw new Error('No se pudo subir la foto')
+
+      const { data: { publicUrl } } = supabase.storage.from('consultas').getPublicUrl(fileName)
+      setFotoURL(publicUrl)
+
+      // Llamar a la Edge Function
+      const { data, error: fnErr } = await supabase.functions.invoke('leer-factura', {
+        body: { foto_url: publicUrl, empresa_id: empresaActivaId }
+      })
+      if (fnErr) throw fnErr
+      if (!data?.ok) throw new Error(data?.error || 'Error al leer la factura')
+
+      setFactura(data.factura)
+      setAlertas(data.alertas || [])
+      setFase('revision')
+    } catch (e) {
+      setError(e.message || 'No se pudo leer la factura')
+      setFase('idle')
+    }
+  }
+
+  async function confirmar() {
+    if (!factura) return
+    setFase('guardando')
+
+    try {
+      // Buscar o crear proveedor
+      let proveedorId = null
+      if (factura.proveedor) {
+        const { data: prov } = await supabase.from('proveedor')
+          .select('id').eq('empresa_id', empresaActivaId).ilike('nombre', factura.proveedor).single()
+        if (prov) {
+          proveedorId = prov.id
+        } else {
+          const { data: nuevo } = await supabase.from('proveedor')
+            .insert({ empresa_id: empresaActivaId, nombre: factura.proveedor }).select('id').single()
+          proveedorId = nuevo?.id
+        }
+      }
+
+      // Guardar compra con items
+      await supabase.from('compra').insert({
+        empresa_id:     empresaActivaId,
+        proveedor_id:   proveedorId,
+        nro_factura:    factura.nro_factura,
+        neto:           factura.neto || factura.total || 0,
+        iva:            factura.iva_monto || 0,
+        total:          factura.total || 0,
+        categoria:      'mercaderia',
+        medio_pago:     'transferencia',
+        cargado_por:    userId,
+        es_simulacion:  esPractica,
+        foto_url:       fotoURL,
+        items_factura:  factura.items || [],
+      })
+
+      // Actualizar precio_costo de productos que matchearon
+      for (const alerta of alertas) {
+        if (alerta.precio_nuevo > 0) {
+          await supabase.from('producto')
+            .update({ precio_costo: alerta.precio_nuevo })
+            .eq('id', alerta.producto_id)
+        }
+      }
+
+      setFase('guardado')
+      setTimeout(() => { setFase('idle'); setFactura(null); setAlertas([]); setFotoURL(null); onGuardado() }, 2500)
+    } catch (e) {
+      setError('No se pudo guardar')
+      setFase('revision')
+    }
+  }
+
+  function reset() { setFase('idle'); setFactura(null); setAlertas([]); setFotoURL(null); setError(null); if (inputRef.current) inputRef.current.value = '' }
+
+  if (fase === 'idle') return (
+    <div className="grid gap-3">
+      <label className="flex flex-col items-center justify-center gap-3 bg-white rounded-3xl p-8 shadow-sm cursor-pointer active:scale-95 transition-all border-2 border-dashed border-orange-200 hover:border-orange-400">
+        <span className="text-5xl">📸</span>
+        <div className="text-center">
+          <p className="font-extrabold text-slate-700 text-lg">Fotografiá la factura</p>
+          <p className="text-slate-400 text-sm mt-1">SAU lee todos los items, precios y calcula tu margen</p>
+        </div>
+        <span className="bg-orange-500 text-white font-extrabold px-6 py-3 rounded-full text-sm">Abrir cámara / galería</span>
+        <input ref={inputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onFoto} />
+      </label>
+      {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+    </div>
+  )
+
+  if (fase === 'leyendo') return (
+    <div className="bg-white rounded-3xl p-10 shadow-sm flex flex-col items-center gap-4">
+      <div className="w-14 h-14 rounded-full border-4 border-orange-500 border-t-transparent animate-spin" />
+      <p className="font-extrabold text-slate-700">Leyendo la factura...</p>
+      <p className="text-slate-400 text-sm text-center">La IA está extrayendo productos, precios e IVA</p>
+    </div>
+  )
+
+  if (fase === 'revision' && factura) return (
+    <div className="grid gap-3">
+      {/* Header */}
+      <div className="bg-white rounded-3xl px-5 py-4 shadow-sm">
+        <div className="flex items-center justify-between mb-2">
+          <p className="font-extrabold text-slate-800 text-lg">{factura.proveedor || 'Proveedor desconocido'}</p>
+          {factura.tipo_factura && <span className="bg-orange-100 text-orange-600 font-extrabold px-3 py-1 rounded-full text-sm">Factura {factura.tipo_factura}</span>}
+        </div>
+        <div className="flex gap-4 text-xs text-slate-400">
+          {factura.fecha && <span>📅 {factura.fecha}</span>}
+          {factura.nro_factura && <span>🧾 {factura.nro_factura}</span>}
+        </div>
+      </div>
+
+      {/* Alertas de precio */}
+      {alertas.length > 0 && (
+        <div className="grid gap-2">
+          {alertas.map((a, i) => (
+            <div key={i} className={`rounded-2xl px-4 py-3 flex items-center gap-3 ${a.subio ? 'bg-red-50 border border-red-200' : 'bg-emerald-50 border border-emerald-200'}`}>
+              <span className="text-xl">{a.subio ? '📈' : '📉'}</span>
+              <div className="flex-1">
+                <p className="font-bold text-sm text-slate-700">{a.nombre}</p>
+                <p className={`text-xs font-semibold ${a.subio ? 'text-red-600' : 'text-emerald-600'}`}>
+                  {a.subio ? '↑' : '↓'} {Math.abs(a.variacion)}% — ${a.precio_anterior?.toLocaleString()} → ${a.precio_nuevo?.toLocaleString()}
+                </p>
+              </div>
+              <span className={`font-extrabold text-sm ${a.subio ? 'text-red-500' : 'text-emerald-500'}`}>
+                {a.subio ? `+${a.variacion}%` : `${a.variacion}%`}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Items */}
+      {factura.items?.length > 0 && (
+        <div className="bg-white rounded-3xl shadow-sm overflow-hidden">
+          <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest px-5 pt-4 pb-2">Items detectados</p>
+          {factura.items.map((item, i) => (
+            <div key={i} className="px-5 py-3 border-t border-slate-50 flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-slate-700 truncate">{item.nombre}</p>
+                <p className="text-xs text-slate-400">{item.cantidad} × ${item.precio_unitario?.toLocaleString()}</p>
+              </div>
+              <p className="font-extrabold text-slate-800 shrink-0">${item.subtotal?.toLocaleString()}</p>
+            </div>
+          ))}
+          <div className="px-5 py-4 bg-slate-50 border-t border-slate-100">
+            {factura.neto > 0 && <div className="flex justify-between text-sm text-slate-500 mb-1"><span>Neto</span><span>${factura.neto?.toLocaleString()}</span></div>}
+            {factura.iva_monto > 0 && <div className="flex justify-between text-sm text-slate-500 mb-1"><span>IVA {factura.iva_porcentaje}%</span><span>${factura.iva_monto?.toLocaleString()}</span></div>}
+            <div className="flex justify-between font-extrabold text-slate-800 text-base"><span>Total</span><span>${factura.total?.toLocaleString()}</span></div>
+          </div>
+        </div>
+      )}
+
+      {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+
+      <div className="grid grid-cols-2 gap-3">
+        <button onClick={reset} className="py-4 rounded-3xl bg-slate-100 text-slate-500 font-bold active:scale-95">Cancelar</button>
+        <button onClick={confirmar} className="py-4 rounded-3xl bg-orange-500 text-white font-extrabold shadow-lg shadow-orange-100 active:scale-95">
+          ✓ Confirmar
+        </button>
+      </div>
+    </div>
+  )
+
+  if (fase === 'guardando') return (
+    <div className="bg-white rounded-3xl p-10 shadow-sm flex flex-col items-center gap-3">
+      <div className="w-10 h-10 rounded-full border-4 border-orange-500 border-t-transparent animate-spin" />
+      <p className="text-slate-500 font-semibold">Guardando...</p>
+    </div>
+  )
+
+  if (fase === 'guardado') return (
+    <div className="bg-emerald-50 border border-emerald-200 rounded-3xl p-8 flex flex-col items-center gap-3">
+      <span className="text-4xl">✅</span>
+      <p className="font-extrabold text-emerald-700 text-lg text-center">¡Factura registrada!</p>
+      {alertas.length > 0 && <p className="text-emerald-600 text-sm text-center">Precios de {alertas.length} producto{alertas.length > 1 ? 's' : ''} actualizados</p>}
+    </div>
+  )
+
+  return null
+}
 
 const CATEGORIAS = [
   { id: 'mercaderia',         label: 'Mercadería',      icon: '📦' },
@@ -281,7 +485,7 @@ function FormGasto({ empresaActivaId, userId, esPractica, onGuardado }) {
 export default function Compras() {
   const { empresaActivaId, empresaActiva, user } = useAuth()
   const esPractica = empresaActiva?.modo_simulacion ?? false
-  const [modo, setModo] = useState('gasto')        // 'factura' | 'gasto'
+  const [modo, setModo] = useState('gasto')        // 'factura' | 'gasto' | 'foto'
   const [recientes, setRecientes] = useState([])
   const [ok, setOk] = useState(false)
 
@@ -314,21 +518,28 @@ export default function Compras() {
   return (
     <div className="grid gap-4">
 
-      {/* Toggle Factura / Gasto */}
-      <div className="grid grid-cols-2 gap-3 bg-white rounded-3xl p-1.5 shadow-sm">
+      {/* Toggle Factura / Gasto / Foto */}
+      <div className="grid grid-cols-3 gap-2 bg-white rounded-3xl p-1.5 shadow-sm">
         <button onClick={() => setModo('factura')}
-          className={`rounded-2xl py-3 font-bold text-sm transition-all ${
+          className={`rounded-2xl py-3 font-bold text-xs transition-all ${
             modo === 'factura' ? 'bg-orange-500 text-white shadow-md' : 'text-slate-400'
           }`}
         >
-          🧾 Factura proveedor
+          🧾 Factura
         </button>
         <button onClick={() => setModo('gasto')}
-          className={`rounded-2xl py-3 font-bold text-sm transition-all ${
+          className={`rounded-2xl py-3 font-bold text-xs transition-all ${
             modo === 'gasto' ? 'bg-orange-500 text-white shadow-md' : 'text-slate-400'
           }`}
         >
-          💸 Gasto rápido
+          💸 Gasto
+        </button>
+        <button onClick={() => setModo('foto')}
+          className={`rounded-2xl py-3 font-bold text-xs transition-all ${
+            modo === 'foto' ? 'bg-orange-500 text-white shadow-md' : 'text-slate-400'
+          }`}
+        >
+          📸 Foto IA
         </button>
       </div>
 
@@ -338,10 +549,9 @@ export default function Compras() {
         </div>
       )}
 
-      {modo === 'factura'
-        ? <FormCompra empresaActivaId={empresaActivaId} userId={user?.id} esPractica={esPractica} onGuardado={handleGuardado} />
-        : <FormGasto  empresaActivaId={empresaActivaId} userId={user?.id} esPractica={esPractica} onGuardado={handleGuardado} />
-      }
+      {modo === 'factura' && <FormCompra     empresaActivaId={empresaActivaId} userId={user?.id} esPractica={esPractica} onGuardado={handleGuardado} />}
+      {modo === 'gasto'   && <FormGasto      empresaActivaId={empresaActivaId} userId={user?.id} esPractica={esPractica} onGuardado={handleGuardado} />}
+      {modo === 'foto'    && <FormFotoFactura empresaActivaId={empresaActivaId} userId={user?.id} esPractica={esPractica} onGuardado={handleGuardado} />}
 
       {/* Recientes del día */}
       {recientes.length > 0 && (

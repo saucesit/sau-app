@@ -27,7 +27,7 @@ const TIPO_MOV = {
 }
 
 // ── Modal Nuevo / Editar Producto ─────────────────────────────────
-function ModalProducto({ producto, empresaId, esPractica, onGuardado, onCerrar }) {
+function ModalProducto({ producto, empresaId, esPractica, modoSimple, onGuardado, onCerrar }) {
   const esEdicion = !!producto
   const [nombre,       setNombre]       = useState(producto?.nombre       || '')
   const [descripcion,  setDescripcion]  = useState(producto?.descripcion  || '')
@@ -38,6 +38,7 @@ function ModalProducto({ producto, empresaId, esPractica, onGuardado, onCerrar }
   const [stockInicial, setStockInicial] = useState(producto?.stock_actual ?? '')
   const [stockMinimo,  setStockMinimo]  = useState(producto?.stock_minimo ?? '')
   const [unidad,       setUnidad]       = useState(producto?.unidad       || 'unidad')
+  const [disponible,   setDisponible]   = useState(producto?.disponible ?? true)
   const [guardando,    setGuardando]    = useState(false)
   const [error,        setError]        = useState(null)
 
@@ -55,6 +56,7 @@ function ModalProducto({ producto, empresaId, esPractica, onGuardado, onCerrar }
         precio_venta: parseFloat(precioVenta) || 0,
         stock_minimo: parseFloat(stockMinimo) || 0,
         unidad,
+        disponible,
       }).eq('id', producto.id)
       setGuardando(false)
       if (err) return setError('No se pudo guardar')
@@ -69,13 +71,14 @@ function ModalProducto({ producto, empresaId, esPractica, onGuardado, onCerrar }
         precio_venta: parseFloat(precioVenta) || 0,
         stock_minimo: parseFloat(stockMinimo) || 0,
         unidad,
+        disponible,
         es_simulacion: esPractica,
       }).select('id').single()
       if (err) { setGuardando(false); return setError('No se pudo guardar') }
 
-      // Stock inicial via movimiento
+      // Stock inicial via movimiento (solo en modo completo; el simple no cuenta unidades)
       const stockNum = parseFloat(stockInicial) || 0
-      if (stockNum > 0) {
+      if (!modoSimple && stockNum > 0) {
         await supabase.from('movimiento_stock').insert({
           empresa_id:  empresaId,
           producto_id: prod.id,
@@ -91,7 +94,7 @@ function ModalProducto({ producto, empresaId, esPractica, onGuardado, onCerrar }
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center">
+    <div className="fixed inset-0 bg-black/60 z-[70] flex items-end justify-center">
       <div className="bg-white w-full max-w-[500px] rounded-t-[2rem] shadow-2xl max-h-[92vh] overflow-y-auto">
         <div className="sticky top-0 bg-white px-5 pt-5 pb-4 border-b border-slate-100 flex items-center justify-between rounded-t-[2rem]">
           <h2 className="font-extrabold text-slate-800">{esEdicion ? 'Editar producto' : 'Nuevo producto'}</h2>
@@ -147,37 +150,52 @@ function ModalProducto({ producto, empresaId, esPractica, onGuardado, onCerrar }
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            {!esEdicion && (
-              <div className="bg-slate-50 rounded-2xl px-4 py-3">
-                <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest mb-1">Stock inicial</p>
-                <input type="number" inputMode="decimal" value={stockInicial} onChange={e => setStockInicial(e.target.value)}
-                  placeholder="0"
-                  className="w-full text-base font-extrabold text-slate-800 outline-none bg-transparent placeholder:text-slate-300"
-                />
+          {modoSimple ? (
+            <button onClick={() => setDisponible(d => !d)}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl font-bold transition-all active:scale-[0.98] ${
+                disponible ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-600 border border-red-200'
+              }`}
+            >
+              <span>{disponible ? 'Disponible para vender' : 'Sin stock'}</span>
+              <span className={`w-11 h-6 rounded-full relative transition-all ${disponible ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${disponible ? 'left-5' : 'left-0.5'}`} />
+              </span>
+            </button>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                {!esEdicion && (
+                  <div className="bg-slate-50 rounded-2xl px-4 py-3">
+                    <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest mb-1">Stock inicial</p>
+                    <input type="number" inputMode="decimal" value={stockInicial} onChange={e => setStockInicial(e.target.value)}
+                      placeholder="0"
+                      className="w-full text-base font-extrabold text-slate-800 outline-none bg-transparent placeholder:text-slate-300"
+                    />
+                  </div>
+                )}
+                <div className="bg-slate-50 rounded-2xl px-4 py-3">
+                  <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest mb-1">Stock mínimo</p>
+                  <input type="number" inputMode="decimal" value={stockMinimo} onChange={e => setStockMinimo(e.target.value)}
+                    placeholder="0"
+                    className="w-full text-base font-extrabold text-slate-800 outline-none bg-transparent placeholder:text-slate-300"
+                  />
+                </div>
               </div>
-            )}
-            <div className="bg-slate-50 rounded-2xl px-4 py-3">
-              <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest mb-1">Stock mínimo</p>
-              <input type="number" inputMode="decimal" value={stockMinimo} onChange={e => setStockMinimo(e.target.value)}
-                placeholder="0"
-                className="w-full text-base font-extrabold text-slate-800 outline-none bg-transparent placeholder:text-slate-300"
-              />
-            </div>
-          </div>
 
-          <div>
-            <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest mb-2">Unidad de medida</p>
-            <div className="flex flex-wrap gap-2">
-              {UNIDADES.map(u => (
-                <button key={u} onClick={() => setUnidad(u)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-                    unidad === u ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'
-                  }`}
-                >{u}</button>
-              ))}
-            </div>
-          </div>
+              <div>
+                <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest mb-2">Unidad de medida</p>
+                <div className="flex flex-wrap gap-2">
+                  {UNIDADES.map(u => (
+                    <button key={u} onClick={() => setUnidad(u)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                        unidad === u ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'
+                      }`}
+                    >{u}</button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
 
           {error && <p className="text-red-500 text-sm text-center">{error}</p>}
 
@@ -225,7 +243,7 @@ function ModalMovimiento({ producto, empresaId, esPractica, onGuardado, onCerrar
   const esAjuste = tipo === 'ajuste'
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center">
+    <div className="fixed inset-0 bg-black/60 z-[70] flex items-end justify-center">
       <div className="bg-white w-full max-w-[500px] rounded-t-[2rem] shadow-2xl">
         <div className="px-5 pt-5 pb-4 border-b border-slate-100 flex items-center justify-between rounded-t-[2rem]">
           <div>
@@ -298,20 +316,30 @@ function ModalMovimiento({ producto, empresaId, esPractica, onGuardado, onCerrar
 }
 
 // ── Modal Detalle Producto ────────────────────────────────────────
-function ModalDetalle({ producto, empresaId, esPractica, onActualizado, onCerrar }) {
+function ModalDetalle({ producto, empresaId, esPractica, modoSimple, onActualizado, onCerrar }) {
   const [movimientos, setMovimientos] = useState([])
   const [cargando,    setCargando]    = useState(true)
   const [modalMov,    setModalMov]    = useState(false)
   const [modalEdit,   setModalEdit]   = useState(false)
+  const [disp,        setDisp]        = useState(producto.disponible ?? true)
 
   useEffect(() => {
+    if (modoSimple) { setCargando(false); return }
     supabase.from('movimiento_stock')
       .select('*')
       .eq('producto_id', producto.id)
       .order('created_at', { ascending: false })
       .limit(20)
       .then(({ data }) => { setMovimientos(data || []); setCargando(false) })
-  }, [producto.id])
+  }, [producto.id, modoSimple])
+
+  async function toggleDisp() {
+    const nuevo = !disp
+    setDisp(nuevo)
+    const { error } = await supabase.from('producto').update({ disponible: nuevo }).eq('id', producto.id)
+    if (error) setDisp(!nuevo)
+    else onActualizado()
+  }
 
   const estado = estadoStock(producto.stock_actual, producto.stock_minimo)
   const est    = ESTADO_ESTILO[estado]
@@ -330,6 +358,7 @@ function ModalDetalle({ producto, empresaId, esPractica, onActualizado, onCerrar
       producto={producto}
       empresaId={empresaId}
       esPractica={esPractica}
+      modoSimple={modoSimple}
       onGuardado={() => { setModalEdit(false); onActualizado(); onCerrar() }}
       onCerrar={() => setModalEdit(false)}
     />
@@ -346,7 +375,7 @@ function ModalDetalle({ producto, empresaId, esPractica, onActualizado, onCerrar
   )
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center">
+    <div className="fixed inset-0 bg-black/60 z-[70] flex items-end justify-center">
       <div className="bg-white w-full max-w-[500px] rounded-t-[2rem] shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white px-5 pt-5 pb-4 border-b border-slate-100 flex items-center justify-between rounded-t-[2rem]">
           <h2 className="font-extrabold text-slate-800 truncate flex-1">{producto.nombre}</h2>
@@ -361,21 +390,34 @@ function ModalDetalle({ producto, empresaId, esPractica, onActualizado, onCerrar
         <div className="px-5 py-5 grid gap-5">
 
           {/* Stock protagonista */}
-          <div className="text-center">
-            <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest mb-1">Stock actual</p>
-            <p className={`font-black leading-none ${
-              estado === 'sin' || estado === 'bajo' ? 'text-red-500' :
-              estado === 'alerta' ? 'text-amber-500' : 'text-slate-900'
-            }`} style={{ fontSize: 'clamp(3rem, 15vw, 4.5rem)' }}>
-              {producto.stock_actual}
-            </p>
-            <p className="text-slate-400 text-sm font-medium mt-1">{producto.unidad}</p>
-            <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full border mt-2 ${est.badge}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${est.dot}`} />
-              {est.label}
-              {producto.stock_minimo > 0 && ` · mín. ${producto.stock_minimo}`}
-            </span>
-          </div>
+          {modoSimple ? (
+            <button onClick={toggleDisp}
+              className={`w-full flex items-center justify-center gap-3 px-4 py-5 rounded-3xl font-extrabold text-lg transition-all active:scale-[0.98] ${
+                disp ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-600 border border-red-200'
+              }`}
+            >
+              <span className={`w-12 h-7 rounded-full relative transition-all ${disp ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+                <span className={`absolute top-1 w-5 h-5 rounded-full bg-white transition-all ${disp ? 'left-6' : 'left-1'}`} />
+              </span>
+              {disp ? 'Disponible' : 'Sin stock'}
+            </button>
+          ) : (
+            <div className="text-center">
+              <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest mb-1">Stock actual</p>
+              <p className={`font-black leading-none ${
+                estado === 'sin' || estado === 'bajo' ? 'text-red-500' :
+                estado === 'alerta' ? 'text-amber-500' : 'text-slate-900'
+              }`} style={{ fontSize: 'clamp(3rem, 15vw, 4.5rem)' }}>
+                {producto.stock_actual}
+              </p>
+              <p className="text-slate-400 text-sm font-medium mt-1">{producto.unidad}</p>
+              <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full border mt-2 ${est.badge}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${est.dot}`} />
+                {est.label}
+                {producto.stock_minimo > 0 && ` · mín. ${producto.stock_minimo}`}
+              </span>
+            </div>
+          )}
 
           {/* Precios */}
           <div className="grid grid-cols-3 gap-3">
@@ -413,49 +455,52 @@ function ModalDetalle({ producto, empresaId, esPractica, onActualizado, onCerrar
             )}
           </div>
 
-          {/* Botones de movimiento */}
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              { tipo: 'entrada', label: 'Entrada', bg: 'bg-emerald-500', shadow: 'shadow-emerald-100' },
-              { tipo: 'salida',  label: 'Salida',  bg: 'bg-red-500',     shadow: 'shadow-red-100' },
-              { tipo: 'ajuste',  label: 'Ajuste',  bg: 'bg-indigo-600',  shadow: 'shadow-indigo-100' },
-            ].map(b => (
-              <button key={b.tipo} onClick={() => setModalMov(true)}
-                className={`py-3 rounded-2xl text-white font-bold text-sm active:scale-95 transition-all shadow-lg ${b.bg} ${b.shadow}`}
-              >
-                {b.label}
-              </button>
-            ))}
-          </div>
+          {/* Movimientos e historial: solo en modo completo */}
+          {!modoSimple && (
+            <>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { tipo: 'entrada', label: 'Entrada', bg: 'bg-emerald-500', shadow: 'shadow-emerald-100' },
+                  { tipo: 'salida',  label: 'Salida',  bg: 'bg-red-500',     shadow: 'shadow-red-100' },
+                  { tipo: 'ajuste',  label: 'Ajuste',  bg: 'bg-indigo-600',  shadow: 'shadow-indigo-100' },
+                ].map(b => (
+                  <button key={b.tipo} onClick={() => setModalMov(true)}
+                    className={`py-3 rounded-2xl text-white font-bold text-sm active:scale-95 transition-all shadow-lg ${b.bg} ${b.shadow}`}
+                  >
+                    {b.label}
+                  </button>
+                ))}
+              </div>
 
-          {/* Historial */}
-          <div>
-            <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest mb-3">Últimos movimientos</p>
-            {cargando && <p className="text-slate-400 text-sm text-center py-4">Cargando…</p>}
-            {!cargando && movimientos.length === 0 && (
-              <p className="text-slate-400 text-sm text-center py-4">Sin movimientos registrados</p>
-            )}
-            <div className="grid gap-2">
-              {movimientos.map(m => {
-                const cfg = TIPO_MOV[m.tipo]
-                return (
-                  <div key={m.id} className={`flex items-center gap-3 px-4 py-3 rounded-2xl ${cfg.bg}`}>
-                    <span className={`text-lg font-extrabold w-6 text-center ${cfg.color}`}>{cfg.signo}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-bold ${cfg.color}`}>
-                        {m.cantidad} {producto.unidad}
-                        {m.motivo && <span className="font-normal ml-1 opacity-70">· {m.motivo}</span>}
-                      </p>
-                      <p className="text-xs text-slate-400">{formatFecha(m.created_at?.slice(0,10))}</p>
-                    </div>
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full bg-white/60 ${cfg.color}`}>
-                      {cfg.label}
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
+              <div>
+                <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest mb-3">Últimos movimientos</p>
+                {cargando && <p className="text-slate-400 text-sm text-center py-4">Cargando…</p>}
+                {!cargando && movimientos.length === 0 && (
+                  <p className="text-slate-400 text-sm text-center py-4">Sin movimientos registrados</p>
+                )}
+                <div className="grid gap-2">
+                  {movimientos.map(m => {
+                    const cfg = TIPO_MOV[m.tipo]
+                    return (
+                      <div key={m.id} className={`flex items-center gap-3 px-4 py-3 rounded-2xl ${cfg.bg}`}>
+                        <span className={`text-lg font-extrabold w-6 text-center ${cfg.color}`}>{cfg.signo}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-bold ${cfg.color}`}>
+                            {m.cantidad} {producto.unidad}
+                            {m.motivo && <span className="font-normal ml-1 opacity-70">· {m.motivo}</span>}
+                          </p>
+                          <p className="text-xs text-slate-400">{formatFecha(m.created_at?.slice(0,10))}</p>
+                        </div>
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full bg-white/60 ${cfg.color}`}>
+                          {cfg.label}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </>
+          )}
 
         </div>
       </div>
@@ -467,6 +512,7 @@ function ModalDetalle({ producto, empresaId, esPractica, onActualizado, onCerrar
 export default function Stock() {
   const { empresaActivaId, empresaActiva } = useAuth()
   const esPractica = empresaActiva?.modo_simulacion ?? false
+  const modoSimple = empresaActiva?.modo_stock === 'simple'
 
   const [tab,          setTab]          = useState('productos')
   const [productos,    setProductos]    = useState([])
@@ -500,6 +546,14 @@ export default function Stock() {
 
   useEffect(() => { cargar() }, [empresaActivaId, esPractica])
 
+  // Modo simple: prender/apagar disponibilidad sin contar unidades
+  async function toggleDisponible(prod) {
+    const nuevo = !prod.disponible
+    setProductos(ps => ps.map(p => p.id === prod.id ? { ...p, disponible: nuevo } : p))
+    const { error } = await supabase.from('producto').update({ disponible: nuevo }).eq('id', prod.id)
+    if (error) setProductos(ps => ps.map(p => p.id === prod.id ? { ...p, disponible: prod.disponible } : p))
+  }
+
   const productosFiltrados = useMemo(() => {
     if (!busqueda) return productos
     const b = busqueda.toLowerCase()
@@ -518,30 +572,55 @@ export default function Stock() {
     productos.reduce((s, p) => s + p.stock_actual * p.precio_costo, 0)
   , [productos])
 
+  const disponibles = useMemo(() =>
+    productos.filter(p => p.disponible).length
+  , [productos])
+
   return (
     <div className="grid gap-4">
 
       {/* Header métricas */}
       <div className="bg-slate-900 text-white rounded-3xl p-5 shadow-lg">
         <div className="flex justify-between items-start mb-4">
-          <div>
-            <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest mb-1">
-              Valor del inventario
-            </p>
-            <p className="text-3xl font-black">{formatPesos(valorInventario)}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-slate-400 mb-1">{productos.length} productos</p>
-            {alertas > 0 && (
-              <span className="text-xs font-bold bg-red-500 text-white px-2.5 py-1 rounded-full">
-                {alertas} con alerta
-              </span>
-            )}
-          </div>
+          {modoSimple ? (
+            <>
+              <div>
+                <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest mb-1">
+                  Productos disponibles
+                </p>
+                <p className="text-3xl font-black">{disponibles}<span className="text-slate-500 text-xl font-bold"> / {productos.length}</span></p>
+              </div>
+              <div className="text-right">
+                {productos.length - disponibles > 0 && (
+                  <span className="text-xs font-bold bg-red-500 text-white px-2.5 py-1 rounded-full">
+                    {productos.length - disponibles} sin stock
+                  </span>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest mb-1">
+                  Valor del inventario
+                </p>
+                <p className="text-3xl font-black">{formatPesos(valorInventario)}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-slate-400 mb-1">{productos.length} productos</p>
+                {alertas > 0 && (
+                  <span className="text-xs font-bold bg-red-500 text-white px-2.5 py-1 rounded-full">
+                    {alertas} con alerta
+                  </span>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs (en modo simple no hay movimientos) */}
+      {!modoSimple && (
       <div className="flex gap-1 bg-slate-100 rounded-2xl p-1">
         {[['productos','📦 Productos'], ['movimientos','📋 Movimientos']].map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)}
@@ -551,6 +630,7 @@ export default function Stock() {
           >{label}</button>
         ))}
       </div>
+      )}
 
       {/* ── TAB PRODUCTOS ── */}
       {tab === 'productos' && (
@@ -587,15 +667,34 @@ export default function Stock() {
                         {p.precio_costo > 0 && ` · Costo: ${formatPesos(p.precio_costo)}`}
                       </p>
                     </div>
-                    <div className="text-right shrink-0">
-                      <p className={`text-2xl font-black leading-none ${
-                        estadoStock(p.stock_actual, p.stock_minimo) === 'ok' ? 'text-slate-800' : 'text-red-500'
-                      }`}>
-                        {p.stock_actual}
-                      </p>
-                      <p className="text-xs text-slate-400">{p.unidad}</p>
-                      <div className={`w-2 h-2 rounded-full mt-1 ml-auto ${est.dot}`} />
-                    </div>
+                    {modoSimple ? (
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => { e.stopPropagation(); toggleDisponible(p) }}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); toggleDisponible(p) } }}
+                        className={`shrink-0 flex items-center gap-2 px-3 py-2 rounded-full font-bold text-xs transition-all active:scale-95 ${
+                          p.disponible
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-red-50 text-red-600 border border-red-200'
+                        }`}
+                      >
+                        <span className={`w-7 h-4 rounded-full relative transition-all ${p.disponible ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+                          <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${p.disponible ? 'left-3.5' : 'left-0.5'}`} />
+                        </span>
+                        {p.disponible ? 'Disponible' : 'Sin stock'}
+                      </div>
+                    ) : (
+                      <div className="text-right shrink-0">
+                        <p className={`text-2xl font-black leading-none ${
+                          estadoStock(p.stock_actual, p.stock_minimo) === 'ok' ? 'text-slate-800' : 'text-red-500'
+                        }`}>
+                          {p.stock_actual}
+                        </p>
+                        <p className="text-xs text-slate-400">{p.unidad}</p>
+                        <div className={`w-2 h-2 rounded-full mt-1 ml-auto ${est.dot}`} />
+                      </div>
+                    )}
                   </div>
                 </button>
               )
@@ -665,6 +764,7 @@ export default function Stock() {
         <ModalProducto
           empresaId={empresaActivaId}
           esPractica={esPractica}
+          modoSimple={modoSimple}
           onGuardado={() => { setModalNuevo(false); cargar() }}
           onCerrar={() => setModalNuevo(false)}
         />
@@ -675,6 +775,7 @@ export default function Stock() {
           producto={seleccionado}
           empresaId={empresaActivaId}
           esPractica={esPractica}
+          modoSimple={modoSimple}
           onActualizado={cargar}
           onCerrar={() => setSeleccionado(null)}
         />

@@ -39,9 +39,9 @@ function formatTiempo(seg) {
 function Exito({ onReintentar }) {
   return (
     <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center px-6 text-center gap-6">
-      <div className="text-7xl animate-bounce">🤙</div>
+      <div className="text-7xl animate-bounce">✅</div>
       <h2 className="text-white font-black text-3xl leading-tight">
-        Lo recibimos, papá.
+        ¡Recibimos tu audio!
       </h2>
       <p className="text-zinc-400 text-lg leading-relaxed max-w-sm">
         En menos de <strong className="text-emerald-400">24 horas</strong> alguien de SAU te contacta con la solución.

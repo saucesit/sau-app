@@ -1,27 +1,15 @@
-import { useEffect, useState, useMemo, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { MODULOS } from '../lib/modulos'
 
-// ── Config ────────────────────────────────────────────────────────
-const BASE_URL = 'https://kiosco-carlitos-qkag.vercel.app'
-
-// ── Animación flotante ────────────────────────────────────────────
-const FLOAT_STYLE = `
-  @keyframes float {
-    0%, 100% { transform: translateY(0px) scale(1); }
-    50%       { transform: translateY(-10px) scale(1.03); }
-  }
-  .burbuja { animation: float 3.5s ease-in-out infinite; }
-`
+const BASE_URL = 'https://kiosco-carlitos.vercel.app'
 
 // ── Audio helpers ─────────────────────────────────────────────────
 function getMimeType() {
   if (typeof MediaRecorder === 'undefined') return 'audio/mp4'
-  const tipos = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4']
-  for (const t of tipos) {
+  for (const t of ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/mp4'])
     if (MediaRecorder.isTypeSupported(t)) return t
-  }
   return 'audio/mp4'
 }
 function getExt(mime) {
@@ -29,749 +17,1412 @@ function getExt(mime) {
   if (mime.includes('ogg'))  return 'ogg'
   return 'mp4'
 }
-function formatTiempo(seg) {
-  const m = Math.floor(seg / 60).toString().padStart(2, '0')
-  const s = (seg % 60).toString().padStart(2, '0')
-  return `${m}:${s}`
+function formatTiempo(s) {
+  return `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`
 }
-
-// ── Helpers ───────────────────────────────────────────────────────
 function iniciales(nombre) {
-  return (nombre || '?').trim().split(' ').map(p => p[0]).join('').slice(0,2).toUpperCase()
-}
-function diasDesde(fecha) {
-  if (!fecha) return null
-  const dias = Math.floor((Date.now() - new Date(fecha).getTime()) / 86400000)
-  if (dias === 0) return 'hoy'
-  if (dias === 1) return 'ayer'
-  if (dias < 7)   return `hace ${dias}d`
-  if (dias < 30)  return `hace ${Math.floor(dias/7)}sem`
-  return `hace ${Math.floor(dias/30)}m`
+  return (nombre||'?').trim().split(' ').map(p=>p[0]).join('').slice(0,2).toUpperCase()
 }
 function saludo() {
   const h = new Date().getHours()
-  if (h < 12) return 'Buenos días'
-  if (h < 19) return 'Buenas tardes'
-  return 'Buenas noches'
+  return h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches'
 }
 
-// ── Estilos ───────────────────────────────────────────────────────
-const BURBUJA = {
-  activo:     { grad: 'from-emerald-400 to-emerald-600', glow: 'shadow-emerald-500/50' },
-  gratuito:   { grad: 'from-amber-300   to-amber-500',   glow: 'shadow-amber-400/50'   },
-  atrasado:   { grad: 'from-red-400     to-red-600',     glow: 'shadow-red-500/50'     },
-  suspendido: { grad: 'from-zinc-500    to-zinc-700',    glow: 'shadow-zinc-500/40'    },
-}
-const SUSCRIPCION = {
-  gratuito:   { label: 'Gratuito',   bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-amber-400'   },
-  activo:     { label: 'Al día',     bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' },
-  atrasado:   { label: 'Atrasado',   bg: 'bg-red-50',     text: 'text-red-600',     dot: 'bg-red-500'     },
-  suspendido: { label: 'Suspendido', bg: 'bg-zinc-100',   text: 'text-zinc-500',    dot: 'bg-zinc-400'    },
-}
-const INSIGHT_ESTILO = {
-  riesgo:      { border: 'border-l-red-500',     bg: 'bg-red-950/40',     badge: 'bg-red-500/20 text-red-400'        },
-  oportunidad: { border: 'border-l-amber-400',   bg: 'bg-amber-950/40',   badge: 'bg-amber-500/20 text-amber-400'    },
-  win:         { border: 'border-l-emerald-500', bg: 'bg-emerald-950/40', badge: 'bg-emerald-500/20 text-emerald-400'},
-  info:        { border: 'border-l-indigo-400',  bg: 'bg-indigo-950/40',  badge: 'bg-indigo-500/20 text-indigo-400'  },
+// ── Config de colores por estado ──────────────────────────────────
+function burbujaConfig(estado) {
+  if (estado === 'resuelta')   return { grad: 'from-emerald-400 to-emerald-600', ring: 'ring-emerald-400', glow: 'shadow-emerald-500/40', label: '✓' }
+  if (estado === 'descartada') return { grad: 'from-red-500 to-red-700',         ring: 'ring-red-500',     glow: 'shadow-red-500/40',     label: '✗' }
+  if (estado === 'en_proceso') return { grad: 'from-amber-400 to-amber-600',     ring: 'ring-amber-400',   glow: 'shadow-amber-500/40',   label: '…' }
+  if (estado === 'confirmado') return { grad: 'from-emerald-400 to-teal-500',    ring: 'ring-teal-400',    glow: 'shadow-teal-500/40',    label: '★' }
+  return { grad: 'from-amber-400 to-orange-500', ring: 'ring-amber-400', glow: 'shadow-amber-500/40', label: '!' }
 }
 
-// ── Insights Jarvis ───────────────────────────────────────────────
-function generarInsights(clientes, statsMap) {
-  const insights = []
-  clientes.forEach(c => {
-    const stats  = statsMap[c.id]
-    const nombre = c.nombre_fantasia || c.razon_social
-    const mods   = c.modulos_activos || []
-    const dias   = stats?.ultima_actividad
-      ? Math.floor((Date.now() - new Date(stats.ultima_actividad).getTime()) / 86400000)
-      : 999
+// ── Modal: detalle del lead ───────────────────────────────────────
+// Se abre al tocar una burbuja. Auto-analiza el audio al abrir.
+function ModalLead({ lead, onCerrar, onActualizado, onAutorizar, onVerCliente }) {
+  const [analizando, setAnalizando] = useState(false)
+  const [analisis,   setAnalisis]   = useState(lead.analisis || null)
+  const [copScript,  setCopScript]  = useState(false)
+  const [fase,   setFase]  = useState('idle')
+  const [segs,   setSegs]  = useState(0)
+  const [blobR,  setBlobR] = useState(null)
+  const [urlR,   setUrlR]  = useState(null)
+  const mrRef  = useRef(null)
+  const chunks = useRef([])
+  const timerR = useRef(null)
+  const mime   = getMimeType()
+  const ext    = getExt(mime)
 
-    if (dias === 999)   insights.push({ tipo:'riesgo',      emoji:'🔴', titulo:`${nombre} nunca usó el sistema`,            sub:'Hay que activarlo cuanto antes',                    accion:'Activar', cid:c.id, p:0 })
-    else if (dias > 14) insights.push({ tipo:'riesgo',      emoji:'🔴', titulo:`${nombre} lleva ${dias} días sin actividad`, sub:'Riesgo de abandono',                               accion:'Llamar',  cid:c.id, p:0 })
+  // ── Auto-analizar al abrir si no hay análisis guardado ──
+  useEffect(() => {
+    if (!lead.analisis && lead.audio_url) analizar()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-    if (stats?.crecimiento > 20)
-      insights.push({ tipo:'win', emoji:'🟢', titulo:`${nombre} creció ${stats.crecimiento}% este mes`, sub:'Buen momento para ofrecerle más', accion:'Ver', cid:c.id, p:2 })
+  useEffect(() => {
+    if (fase === 'grabando') timerR.current = setInterval(() => setSegs(s => s + 1), 1000)
+    else { clearInterval(timerR.current); if (fase !== 'grabado') setSegs(0) }
+    return () => clearInterval(timerR.current)
+  }, [fase])
 
-    if (mods.includes('ventas') && !mods.includes('fiado') && (stats?.ventas_mes||0) > 5)
-      insights.push({ tipo:'oportunidad', emoji:'🟡', titulo:`${nombre} no usa Fiado`, sub:`${stats.ventas_mes} ventas/mes — probablemente vende a cuenta`, accion:'Activar', cid:c.id, p:1 })
-    if (mods.includes('ventas') && !mods.includes('stock') && (stats?.ventas_mes||0) > 10)
-      insights.push({ tipo:'oportunidad', emoji:'🟡', titulo:`${nombre} no controla stock`, sub:'Con ese volumen el inventario los ayudaría', accion:'Activar', cid:c.id, p:1 })
-    if (mods.includes('ventas') && !mods.includes('compras') && (stats?.ventas_mes||0) > 8)
-      insights.push({ tipo:'oportunidad', emoji:'🟡', titulo:`${nombre} no registra compras`, sub:'Sin compras no pueden ver el margen real', accion:'Activar', cid:c.id, p:1 })
+  async function analizar() {
+    setAnalizando(true)
+    try {
+      const { data } = await supabase.functions.invoke('analizar-consulta', { body: { consulta_id: lead.id } })
+      if (data?.analisis) { setAnalisis(data.analisis); onActualizado() }
+    } catch { alert('Error al analizar') }
+    finally { setAnalizando(false) }
+  }
 
-    if ((mods.length / MODULOS.length) < 0.4 && dias < 30)
-      insights.push({ tipo:'info', emoji:'📊', titulo:`${nombre} usa solo ${mods.length}/${MODULOS.length} módulos`, sub:'El sistema puede darles mucho más valor', accion:'Revisar', cid:c.id, p:2 })
-  })
-  return insights.sort((a, b) => a.p - b.p)
-}
+  async function grabar() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : {})
+      mrRef.current = mr; chunks.current = []
+      mr.ondataavailable = e => { if (e.data.size > 0) chunks.current.push(e.data) }
+      mr.onstop = () => {
+        const blob = new Blob(chunks.current, { type: mime || 'audio/mp4' })
+        setBlobR(blob); setUrlR(URL.createObjectURL(blob))
+        setFase('grabado'); stream.getTracks().forEach(t => t.stop())
+      }
+      mr.start(); setFase('grabando')
+    } catch { alert('Sin acceso al micrófono') }
+  }
 
-// ── Módulo chip ───────────────────────────────────────────────────
-function ModuloChip({ id }) {
-  const mod = MODULOS.find(m => m.id === id)
-  if (!mod) return null
+  async function guardarResp() {
+    if (!blobR) return
+    setFase('guardando')
+    const fn = `respuestas/resp-${lead.id}-${Date.now()}.${ext}`
+    const { error } = await supabase.storage.from('consultas').upload(fn, blobR, { contentType: mime || 'audio/mp4' })
+    if (error) { alert('Error al subir'); setFase('grabado'); return }
+    const { data: { publicUrl } } = supabase.storage.from('consultas').getPublicUrl(fn)
+    await supabase.from('consulta_sau').update({ audio_respuesta_url: publicUrl, estado: 'en_proceso' }).eq('id', lead.id)
+    setFase('idle'); setBlobR(null); setUrlR(null); onActualizado()
+  }
+
+  async function descartar() {
+    await supabase.from('consulta_sau').update({ estado: 'descartada' }).eq('id', lead.id)
+    onActualizado(); onCerrar()
+  }
+
+  const tel      = lead.telefono?.replace(/\D/g, '')
+  const waMsg    = encodeURIComponent(`Hola${lead.nombre ? ` ${lead.nombre.split(' ')[0]}` : ''}! 👋 Soy Facundo de SAU.\nTe grabé una respuesta 👇\n${BASE_URL}/r/${lead.id}`)
+  const cfg      = burbujaConfig(lead.estado)
+  const esCliente = lead.estado === 'resuelta' && lead.empresa_id_vinculada
+
   return (
-    <span className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-400 text-xs font-bold px-2 py-1 rounded-full ring-1 ring-emerald-500/20">
-      {mod.icon} {mod.titulo.split(' ')[0]}
-    </span>
+    <div className="fixed inset-0 bg-black/90 z-50 flex items-end justify-center">
+      <div className="bg-zinc-900 border border-zinc-800 w-full max-w-lg rounded-t-[2rem] max-h-[92vh] overflow-y-auto">
+
+        {/* Header */}
+        <div className="sticky top-0 bg-zinc-900 px-5 pt-5 pb-4 border-b border-zinc-800 flex items-center gap-3 rounded-t-[2rem]">
+          <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${cfg.grad} flex items-center justify-center text-white font-extrabold shrink-0 shadow-lg ${cfg.glow}`}>
+            {iniciales(lead.nombre)}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-white font-extrabold text-base">{lead.nombre || 'Anónimo'}</p>
+            <p className="text-zinc-500 text-xs">{lead.telefono || 'Sin teléfono'} · {new Date(lead.created_at).toLocaleDateString('es-AR')}</p>
+          </div>
+          <button onClick={onCerrar} className="w-9 h-9 rounded-full bg-zinc-800 text-zinc-400 text-xl flex items-center justify-center shrink-0">×</button>
+        </div>
+
+        <div className="px-5 py-4 grid gap-4">
+
+          {/* Acceso rápido si ya es cliente */}
+          {esCliente && (
+            <button onClick={() => { onCerrar(); onVerCliente(lead.empresa_id_vinculada, lead) }}
+              className="flex items-center justify-between px-4 py-4 rounded-2xl bg-emerald-500/10 ring-1 ring-emerald-500/30 active:scale-95 transition-transform">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">🚀</span>
+                <div className="text-left">
+                  <p className="text-emerald-400 font-extrabold text-sm">Cliente activo en SAU</p>
+                  <p className="text-zinc-500 text-xs">Ver perfil y configuración →</p>
+                </div>
+              </div>
+              <span className="text-emerald-400 text-lg">→</span>
+            </button>
+          )}
+
+          {/* Audio del cliente */}
+          <div>
+            <p className="text-zinc-600 text-[0.6rem] font-bold uppercase tracking-widest mb-2">🎤 Audio del cliente</p>
+            <audio src={lead.audio_url} controls className="w-full h-10 rounded-xl" style={{ colorScheme: 'dark' }} />
+          </div>
+
+          {/* Análisis IA — auto-carga al abrir */}
+          {analizando && !analisis ? (
+            <div className="flex items-center gap-3 py-4 px-4 bg-zinc-800/60 rounded-2xl">
+              <div className="w-5 h-5 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin shrink-0" />
+              <div>
+                <p className="text-zinc-200 text-sm font-semibold">Analizando el audio con IA...</p>
+                <p className="text-zinc-600 text-xs mt-0.5">Entendiendo el problema para vos</p>
+              </div>
+            </div>
+          ) : analisis ? (
+            <div className="bg-zinc-800/60 rounded-2xl p-4 grid gap-3">
+              <div className="flex justify-between items-center">
+                <p className="text-zinc-500 text-[0.6rem] font-bold uppercase tracking-widest">🤖 Análisis IA</p>
+                <button onClick={analizar} disabled={analizando} className="text-[0.6rem] text-zinc-600 hover:text-zinc-400">
+                  {analizando ? '...' : 'Re-analizar'}
+                </button>
+              </div>
+
+              {/* El problema */}
+              <div className="bg-zinc-900 rounded-xl px-3 py-3">
+                <p className="text-zinc-600 text-[0.6rem] uppercase tracking-widest mb-1.5">Su problema real</p>
+                <p className="text-white font-semibold text-sm leading-snug">{analisis.problema_principal}</p>
+              </div>
+
+              {/* Puntos de dolor */}
+              {analisis.puntos_de_dolor?.length > 0 && (
+                <div className="grid gap-1">
+                  {analisis.puntos_de_dolor.map((d, i) => (
+                    <p key={i} className="text-zinc-400 text-xs flex gap-2">
+                      <span className="text-red-500 shrink-0 mt-0.5">•</span>{d}
+                    </p>
+                  ))}
+                </div>
+              )}
+
+              {/* Cómo SAU lo resuelve */}
+              {analisis.modulos_que_resuelven?.length > 0 && (
+                <div>
+                  <p className="text-zinc-600 text-[0.6rem] uppercase tracking-widest mb-2">SAU lo resuelve con</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {analisis.modulos_que_resuelven.map(id => {
+                      const m = MODULOS.find(x => x.id === id)
+                      return m ? (
+                        <span key={id} className="bg-emerald-500/10 text-emerald-400 text-xs font-bold px-2.5 py-1 rounded-full ring-1 ring-emerald-500/20">
+                          {m.icon} {m.titulo.split(' ')[0]}
+                        </span>
+                      ) : null
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Tu argumento para el audio de respuesta */}
+              {analisis.script_para_facundo && (
+                <div className="border border-emerald-500/20 bg-emerald-500/5 rounded-xl p-3">
+                  <div className="flex justify-between items-center mb-1.5">
+                    <p className="text-emerald-500 text-[0.6rem] font-bold uppercase tracking-widest">Tu argumento de venta</p>
+                    <button
+                      onClick={async () => { await navigator.clipboard.writeText(analisis.script_para_facundo); setCopScript(true); setTimeout(() => setCopScript(false), 2000) }}
+                      className={`text-[0.6rem] font-bold transition-colors ${copScript ? 'text-emerald-400' : 'text-zinc-600'}`}>
+                      {copScript ? '✓ Copiado' : 'Copiar'}
+                    </button>
+                  </div>
+                  <p className="text-emerald-300 text-xs italic leading-relaxed">"{analisis.script_para_facundo}"</p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <button onClick={analizar}
+              className="py-3 rounded-2xl bg-zinc-800 border border-zinc-700 text-sm font-bold flex items-center justify-center gap-2 active:scale-95">
+              <span>🤖</span><span className="text-zinc-300">Analizar con IA</span>
+            </button>
+          )}
+
+          {/* Grabar respuesta — solo si no es cliente todavía */}
+          {!esCliente && (
+            lead.audio_respuesta_url ? (
+              <div className="grid gap-2">
+                <p className="text-zinc-600 text-[0.6rem] font-bold uppercase tracking-widest">🎙️ Tu respuesta grabada</p>
+                <audio src={lead.audio_respuesta_url} controls className="w-full h-10 rounded-xl" style={{ colorScheme: 'dark' }} />
+                {tel && (
+                  <a href={`https://wa.me/${tel}?text=${waMsg}`} target="_blank" rel="noopener noreferrer"
+                    className="py-2.5 rounded-xl bg-[#25D366]/10 text-[#25D366] text-sm font-bold text-center">
+                    📲 Enviar respuesta por WhatsApp
+                  </a>
+                )}
+              </div>
+            ) : fase === 'idle' ? (
+              <button onClick={() => setFase('listo')} className="py-3 rounded-2xl bg-zinc-800 text-zinc-500 text-sm font-bold flex items-center justify-center gap-2">
+                🎙️ Grabar tu respuesta en audio
+              </button>
+            ) : fase === 'listo' ? (
+              <div className="grid gap-2">
+                <button onClick={grabar} className="py-3 rounded-2xl bg-emerald-500/10 text-emerald-400 font-bold ring-1 ring-emerald-500/30">🟢 Empezar a grabar</button>
+                <button onClick={() => setFase('idle')} className="text-zinc-700 text-xs text-center py-1">Cancelar</button>
+              </div>
+            ) : fase === 'grabando' ? (
+              <div className="grid gap-2">
+                <div className="flex items-center justify-center gap-3 py-1">
+                  <span className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
+                  <span className="text-red-400 font-extrabold text-2xl font-mono">{formatTiempo(segs)}</span>
+                </div>
+                <button onClick={() => mrRef.current?.stop()} className="py-3 rounded-2xl bg-red-500/10 text-red-400 font-bold ring-1 ring-red-500/30">⬛ Detener</button>
+              </div>
+            ) : fase === 'grabado' && urlR ? (
+              <div className="grid gap-2">
+                <audio src={urlR} controls className="w-full h-10 rounded-xl" style={{ colorScheme: 'dark' }} />
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => { setBlobR(null); setUrlR(null); setFase('idle') }} className="py-3 rounded-xl bg-zinc-800 text-zinc-500 font-bold text-sm">Regrabar</button>
+                  <button onClick={guardarResp} className="py-3 rounded-xl bg-white text-zinc-900 font-bold text-sm">Guardar ✓</button>
+                </div>
+              </div>
+            ) : fase === 'guardando' ? (
+              <div className="flex items-center justify-center gap-2 py-3">
+                <div className="w-5 h-5 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
+                <span className="text-zinc-500 text-sm">Subiendo...</span>
+              </div>
+            ) : null
+          )}
+
+          {/* Acciones principales */}
+          {!esCliente && lead.estado !== 'descartada' && (
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <button onClick={descartar}
+                className="py-4 rounded-2xl bg-red-500/10 text-red-400 font-bold ring-1 ring-red-500/20 active:scale-95">
+                ✗ Descartar
+              </button>
+              <button onClick={() => { onCerrar(); onAutorizar(lead) }}
+                className="py-4 rounded-2xl bg-emerald-500 text-white font-extrabold shadow-lg shadow-emerald-500/20 active:scale-95">
+                ✅ Crear cliente
+              </button>
+            </div>
+          )}
+
+        </div>
+      </div>
+    </div>
   )
 }
 
-// ── Card de consulta con grabador de respuesta ────────────────────
-function ConsultaCard({ c, onActualizada }) {
-  const [fase,        setFase]        = useState('idle') // idle | listo | grabando | grabado | guardando
-  const [segundos,    setSegundos]    = useState(0)
-  const [blobResp,    setBlobResp]    = useState(null)
-  const [urlResp,     setUrlResp]     = useState(null)
-  const [linkCopiado, setLinkCopiado] = useState(false)
-  const [analizando,  setAnalizando]  = useState(false)
-  const [analisisLocal, setAnalisisLocal] = useState(c.analisis || null)
-  const [scriptCopiado, setScriptCopiado] = useState(false)
+// ── Generador de clave sugerida ───────────────────────────────────
+function generarClave() {
+  return `SAU-${Math.floor(100000 + Math.random() * 900000)}`
+}
 
-  const mrRef     = useRef(null)
-  const streamRef = useRef(null)
-  const chunks    = useRef([])
-  const timer     = useRef(null)
-  const mimeType  = getMimeType()
-  const ext       = getExt(mimeType)
+// ── Modal: crear cliente ──────────────────────────────────────────
+function ModalCrearCliente({ lead, onCerrar, onCreado, onConfigurar }) {
+  const [nombre,    setNombre]    = useState(lead.nombre || '')
+  const [telefono,  setTelefono]  = useState(lead.telefono || '')
+  const [email,     setEmail]     = useState('')
+  const [password,  setPassword]  = useState(() => generarClave())
+  const [modulos,   setModulos]   = useState(['ventas', 'caja'])
+  const [guardando, setGuardando] = useState(false)
+  const [error,     setError]     = useState(null)
+  const [creado,    setCreado]    = useState(null)
 
-  useEffect(() => {
-    if (fase === 'grabando') {
-      timer.current = setInterval(() => setSegundos(s => s + 1), 1000)
-    } else {
-      clearInterval(timer.current)
-      if (fase !== 'grabado') setSegundos(0)
-    }
-    return () => clearInterval(timer.current)
-  }, [fase])
+  const OPTS = [
+    { id: 'ventas',       icon: '🛒', label: 'Ventas'       },
+    { id: 'caja',         icon: '💵', label: 'Caja'         },
+    { id: 'presupuestos', icon: '📄', label: 'Presupuestos' },
+    { id: 'stock',        icon: '📦', label: 'Stock'        },
+    { id: 'fiado',        icon: '📒', label: 'Fiado'        },
+    { id: 'compras',      icon: '🛍️', label: 'Compras'     },
+    { id: 'equipo',       icon: '👥', label: 'Equipo'       },
+  ]
 
-  async function analizarConsulta() {
-    setAnalizando(true)
-    try {
-      const { data, error } = await supabase.functions.invoke('analizar-consulta', {
-        body: { consulta_id: c.id }
-      })
-      if (error) throw error
-      if (data?.analisis) setAnalisisLocal(data.analisis)
-      onActualizada()
-    } catch (e) {
-      console.error(e)
-      alert('Error al analizar. Revisá que la API key esté configurada.')
-    } finally {
-      setAnalizando(false)
-    }
+  function toggleMod(id) {
+    setModulos(p => p.includes(id) ? p.filter(m => m !== id) : [...p, id])
   }
 
-  async function copiarScript() {
-    if (!analisisLocal?.script_para_facundo) return
-    await navigator.clipboard.writeText(analisisLocal.script_para_facundo)
-    setScriptCopiado(true)
-    setTimeout(() => setScriptCopiado(false), 2000)
-  }
+  async function crear() {
+    if (!nombre.trim())   return setError('Ingresá el nombre del negocio')
+    if (!telefono.trim()) return setError('Ingresá el WhatsApp')
+    setGuardando(true); setError(null)
 
-  async function iniciarGrabacion() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      streamRef.current = stream
-      const mr = new MediaRecorder(stream, mimeType ? { mimeType } : {})
-      mrRef.current = mr
-      chunks.current = []
-      mr.ondataavailable = e => { if (e.data.size > 0) chunks.current.push(e.data) }
-      mr.onstop = () => {
-        const blob = new Blob(chunks.current, { type: mimeType || 'audio/mp4' })
-        setBlobResp(blob)
-        setUrlResp(URL.createObjectURL(blob))
-        setFase('grabado')
-        stream.getTracks().forEach(t => t.stop())
+    if (!email.trim()) return setError('Ingresá el email del cliente')
+    if (!password.trim()) return setError('Ingresá la contraseña')
+
+    const { data: fnData, error: fnErr } = await supabase.functions.invoke('crear-cliente', {
+      body: {
+        nombre_empresa: nombre.trim(),
+        email:          email.trim(),
+        password:       password.trim(),
+        telefono,
+        modulos,
+        notas_admin:    `Lead audio. Tel: ${telefono}${lead.analisis?.problema_principal ? '\n' + lead.analisis.problema_principal : ''}`,
+        onboarding: lead.analisis ? {
+          completado:      false,
+          nombre_cliente:  lead.nombre || null,
+          problema:        lead.analisis.problema_principal || null,
+          puntos_de_dolor: lead.analisis.puntos_de_dolor || [],
+          modulos:         lead.analisis.modulos_que_resuelven || [],
+        } : null,
+        consulta_id: lead.id,
       }
-      mr.start()
-      setFase('grabando')
-    } catch { alert('No se pudo acceder al micrófono') }
+    })
+
+    if (fnErr || !fnData?.ok) {
+      const msg = fnData?.error || fnErr?.message || 'Error desconocido'
+      console.error('crear-cliente error:', msg, fnErr)
+      setError(msg)
+      setGuardando(false)
+      return
+    }
+
+    setGuardando(false)
+    setCreado(fnData)
   }
+
+  // ── Pantalla de éxito ──────────────────────────────────────────
+  if (creado) {
+    const tel = telefono.replace(/\D/g, '')
+    const msg = encodeURIComponent(
+      `Hola ${creado.nombre.split(' ')[0]}! 👋 Soy Facundo de SAU.\n\n` +
+      `Tu acceso está listo 🚀\n` +
+      `🔗 ${BASE_URL}/login\n` +
+      `📧 ${creado.email}\n` +
+      `🔑 ${creado.password}\n\n` +
+      `Te espera una bienvenida personalizada.\n— SAU`
+    )
+    return (
+      <div className="fixed inset-0 bg-black/95 z-50 flex items-end justify-center p-4">
+        <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-3xl p-6 grid gap-4">
+          <div className="text-center">
+            <div className="text-5xl mb-3">🎉</div>
+            <h2 className="text-white font-extrabold text-xl">{creado.nombre}</h2>
+            <p className="text-emerald-400 text-sm mt-1 font-semibold">¡Cliente creado en SAU!</p>
+          </div>
+          <div className="bg-zinc-800 rounded-2xl p-4 grid gap-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-zinc-500 text-[0.6rem] font-bold uppercase tracking-widest">Email</p>
+                <p className="text-white text-sm font-mono mt-0.5 truncate">{creado.email}</p>
+              </div>
+              <button onClick={() => navigator.clipboard.writeText(creado.email)}
+                className="text-zinc-500 text-xs bg-zinc-700 px-2 py-1 rounded-lg shrink-0">Copiar</button>
+            </div>
+            <div className="flex items-center justify-between gap-2 border-t border-zinc-700 pt-3">
+              <div>
+                <p className="text-zinc-500 text-[0.6rem] font-bold uppercase tracking-widest">Contraseña</p>
+                <p className="text-emerald-400 text-xl font-extrabold font-mono mt-0.5 tracking-widest">{creado.password}</p>
+              </div>
+              <button onClick={() => navigator.clipboard.writeText(creado.password)}
+                className="text-zinc-500 text-xs bg-zinc-700 px-2 py-1 rounded-lg shrink-0">Copiar</button>
+            </div>
+          </div>
+
+          {/* Primario: armar el perfil */}
+          <button onClick={() => onConfigurar(creado.empresa_id, lead)}
+            className="w-full py-4 rounded-2xl bg-indigo-600 text-white font-extrabold text-base flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20 active:scale-95">
+            🚀 Armar el perfil en SAU
+          </button>
+
+          {/* Secundario: WhatsApp */}
+          <a href={tel ? `https://wa.me/${tel}?text=${msg}` : `https://wa.me/?text=${msg}`}
+            target="_blank" rel="noopener noreferrer"
+            className="w-full py-3 rounded-2xl bg-[#25D366]/10 text-[#25D366] font-bold text-sm text-center block active:scale-95">
+            📲 Mandar acceso por WhatsApp
+          </a>
+
+          <button onClick={() => onCreado()} className="text-zinc-700 text-xs text-center py-1">
+            Cerrar
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/90 z-50 flex items-end justify-center p-4">
+      <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-3xl p-6 grid gap-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-white font-extrabold text-lg">Nuevo cliente</h2>
+          <button onClick={onCerrar} className="w-9 h-9 rounded-full bg-zinc-800 text-zinc-400 text-xl flex items-center justify-center">×</button>
+        </div>
+
+        {lead.analisis?.problema_principal && (
+          <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-2xl px-4 py-3">
+            <p className="text-indigo-400 text-xs font-bold uppercase tracking-widest mb-1">Problema detectado</p>
+            <p className="text-zinc-300 text-sm leading-snug">{lead.analisis.problema_principal}</p>
+          </div>
+        )}
+
+        <div className="grid gap-3">
+          <input type="text" placeholder="Nombre del negocio *"
+            value={nombre} onChange={e => setNombre(e.target.value)}
+            className="w-full px-4 py-3 rounded-2xl bg-zinc-800 border border-zinc-700 outline-none text-white placeholder:text-zinc-600 focus:border-emerald-500 transition-colors" />
+          <input type="tel" placeholder="WhatsApp *"
+            value={telefono} onChange={e => setTelefono(e.target.value)}
+            className="w-full px-4 py-3 rounded-2xl bg-zinc-800 border border-zinc-700 outline-none text-white placeholder:text-zinc-600 focus:border-emerald-500 transition-colors" />
+        </div>
+
+        {/* ── Credenciales de acceso ─────────────────────────── */}
+        <div className="bg-zinc-800/60 border border-zinc-700 rounded-2xl p-3 grid gap-2">
+          <p className="text-zinc-500 text-[0.6rem] font-bold uppercase tracking-widest">🔐 Credenciales de acceso</p>
+          <input type="email" placeholder="Email *  (ej: fede@sau.app)"
+            value={email} onChange={e => setEmail(e.target.value)}
+            className="w-full px-4 py-3 rounded-xl bg-zinc-900 border border-zinc-700 outline-none text-white placeholder:text-zinc-600 focus:border-indigo-500 transition-colors text-sm" />
+          <div className="flex gap-2">
+            <input type="text" placeholder="Contraseña *"
+              value={password} onChange={e => setPassword(e.target.value)}
+              className="flex-1 px-4 py-3 rounded-xl bg-zinc-900 border border-zinc-700 outline-none text-white placeholder:text-zinc-600 focus:border-indigo-500 transition-colors text-sm font-mono" />
+            <button type="button" onClick={() => setPassword(generarClave())}
+              className="px-3 py-3 rounded-xl bg-zinc-700 text-zinc-400 text-xs font-bold shrink-0 active:scale-95" title="Generar nueva">
+              🎲
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <p className="text-xs text-zinc-600 font-semibold uppercase tracking-widest mb-2">Módulos — tildá solo lo que necesita</p>
+          <div className="grid grid-cols-3 gap-2">
+            {OPTS.map(m => (
+              <button key={m.id} onClick={() => toggleMod(m.id)}
+                className={`py-2.5 rounded-2xl text-xs font-bold transition-all flex flex-col items-center gap-1 ${
+                  modulos.includes(m.id) ? 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/30' : 'bg-zinc-800 text-zinc-600'
+                }`}>
+                <span className="text-lg">{m.icon}</span>
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-amber-950/30 border border-amber-500/20 rounded-2xl px-4 py-3 flex items-center gap-3">
+          <span>🟡</span>
+          <p className="text-amber-500 text-xs font-semibold">Arranca en Modo Práctica — puede probar todo sin riesgo</p>
+        </div>
+
+        {error && <p className="text-red-400 text-sm font-semibold text-center">{error}</p>}
+
+        <div className="grid grid-cols-2 gap-3">
+          <button onClick={onCerrar} className="py-4 rounded-2xl bg-zinc-800 text-zinc-500 font-bold">Cancelar</button>
+          <button onClick={crear} disabled={guardando}
+            className="py-4 rounded-2xl bg-emerald-500 text-white font-extrabold disabled:opacity-50 active:scale-95 shadow-lg shadow-emerald-500/20">
+            {guardando ? 'Creando…' : '✓ Autorizar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Módulos disponibles (para ClientePanel) ───────────────────────
+const MODS_ALL = [
+  { id: 'ventas',       icon: '🛒', label: 'Ventas'       },
+  { id: 'caja',         icon: '💵', label: 'Caja'         },
+  { id: 'presupuestos', icon: '📄', label: 'Presupuestos' },
+  { id: 'stock',        icon: '📦', label: 'Stock'        },
+  { id: 'fiado',        icon: '📒', label: 'Fiado'        },
+  { id: 'compras',      icon: '🛍️', label: 'Compras'     },
+  { id: 'equipo',       icon: '👥', label: 'Equipo'       },
+]
+
+// ── Card de un usuario (editar email + clave) ────────────────────
+function UsuarioCard({ usuario, tel, nombreLead, onActualizar }) {
+  const [abierto,  setAbierto]  = useState(false)
+  const [email,    setEmail]    = useState(usuario.email || '')
+  const [clave,    setClave]    = useState('')
+  const [guardando,setGuardando]= useState(false)
+  const [okMsg,    setOkMsg]    = useState(false)
 
   async function guardar() {
-    if (!blobResp) return
-    setFase('guardando')
-    const fileName = `respuestas/resp-${c.id}-${Date.now()}.${ext}`
-    const { error: upErr } = await supabase.storage
-      .from('consultas')
-      .upload(fileName, blobResp, { contentType: mimeType || 'audio/mp4' })
-    if (upErr) { alert('Error al subir'); setFase('grabado'); return }
+    const cambios = {}
+    if (email.trim() && email.trim() !== usuario.email) cambios.email = email.trim()
+    if (clave.trim()) cambios.password = clave.trim()
+    if (!Object.keys(cambios).length) { setAbierto(false); return }
 
-    const { data: { publicUrl } } = supabase.storage.from('consultas').getPublicUrl(fileName)
-
-    await supabase.from('consulta_sau').update({
-      audio_respuesta_url: publicUrl,
-      estado: 'en_proceso',
-    }).eq('id', c.id)
-
-    setFase('idle')
-    setBlobResp(null); setUrlResp(null)
-    onActualizada()
+    setGuardando(true)
+    const ok = await onActualizar(usuario.usuario_id, cambios)
+    setGuardando(false)
+    if (ok) {
+      setOkMsg(true)
+      setTimeout(() => { setOkMsg(false); setAbierto(false); setClave('') }, 1500)
+    }
   }
 
-  async function cambiarEstado(estado) {
-    await supabase.from('consulta_sau').update({ estado }).eq('id', c.id)
-    onActualizada()
-  }
-
-  async function copiarLink() {
-    await navigator.clipboard.writeText(`${BASE_URL}/r/${c.id}`)
-    setLinkCopiado(true)
-    setTimeout(() => setLinkCopiado(false), 2000)
-  }
-
-  const primerNombre = c.nombre ? c.nombre.split(' ')[0] : null
   const waMsg = encodeURIComponent(
-    `Hola${primerNombre ? ` ${primerNombre}` : ''}! 👋 Soy Facundo de SAU.\n` +
-    `Escuché tu consulta y te grabé una respuesta personal.\n` +
-    `Escuchala acá 👇\n\n${BASE_URL}/r/${c.id}\n\n` +
-    `— SAU · Sistema de Administración Unificado`
+    `Hola ${usuario.nombre || nombreLead?.split(' ')[0] || ''}! 👋\n\n` +
+    `Tu acceso a SAU:\n🔗 ${BASE_URL}/login\n` +
+    `📧 ${email || usuario.email || ''}\n` +
+    (clave ? `🔑 Contraseña: ${clave}\n` : '') +
+    `\n— Facundo`
   )
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
-      {/* Header */}
-      <div className="flex justify-between items-start px-4 pt-4 pb-3">
-        <div>
-          <p className="text-white font-bold text-sm">{c.nombre || 'Anónimo'}</p>
-          <p className="text-zinc-600 text-xs mt-0.5">
-            {c.telefono && `${c.telefono} · `}
-            {new Date(c.created_at).toLocaleDateString('es-AR')}
-          </p>
+      {/* Cabecera */}
+      <button onClick={() => setAbierto(a => !a)} className="w-full px-4 py-3 flex items-center gap-3 text-left active:scale-[0.99]">
+        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center text-white font-extrabold text-xs shrink-0">
+          {iniciales(usuario.nombre || usuario.email || '?')}
         </div>
-        <select value={c.estado} onChange={e => cambiarEstado(e.target.value)}
-          className="text-xs font-bold px-2 py-1 rounded-full bg-zinc-800 border border-zinc-700 outline-none text-zinc-400">
-          <option value="nueva">🔴 Nueva</option>
-          <option value="en_proceso">🟡 En proceso</option>
-          <option value="resuelta">🟢 Resuelta</option>
-        </select>
-      </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-white text-sm font-bold truncate">{usuario.nombre || 'Usuario'}</p>
+          <p className="text-zinc-500 text-xs font-mono truncate">{usuario.email || 'sin email'}</p>
+        </div>
+        <span className="text-[0.55rem] font-bold text-zinc-500 bg-zinc-800 px-2 py-0.5 rounded-full shrink-0">{usuario.rol}</span>
+        <span className="text-zinc-700 text-sm shrink-0">{abierto ? '▲' : '▼'}</span>
+      </button>
 
-      {/* Audio cliente */}
-      <div className="px-4 pb-3">
-        <p className="text-zinc-600 text-[0.6rem] font-semibold uppercase tracking-widest mb-1.5">🎤 Consulta del cliente</p>
-        <audio src={c.audio_url} controls className="w-full rounded-xl" style={{ colorScheme:'dark' }} />
-      </div>
-
-      {/* Análisis IA */}
-      <div className="mx-4 mb-3">
-        {analisisLocal ? (
-          <div className="bg-zinc-800/60 border border-zinc-700 rounded-2xl p-4 grid gap-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-zinc-500 font-semibold uppercase tracking-widest">🤖 Análisis IA</p>
-              <button onClick={analizarConsulta} disabled={analizando}
-                className="text-[0.6rem] text-zinc-600 hover:text-zinc-400 transition-colors">
-                {analizando ? 'Analizando…' : 'Re-analizar'}
-              </button>
+      {/* Editor */}
+      {abierto && (
+        <div className="px-4 pb-4 grid gap-2 border-t border-zinc-800 pt-3">
+          <div>
+            <p className="text-zinc-600 text-[0.6rem] uppercase tracking-widest mb-1">Email (usuario)</p>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white outline-none font-mono focus:border-indigo-500" />
+          </div>
+          <div>
+            <p className="text-zinc-600 text-[0.6rem] uppercase tracking-widest mb-1">Contraseña nueva (dejar vacío = no cambiar)</p>
+            <div className="flex gap-1.5">
+              <input type="text" value={clave} onChange={e => setClave(e.target.value)} placeholder="••••••"
+                className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white outline-none font-mono focus:border-indigo-500" />
+              <button type="button" onClick={() => setClave(generarClave())}
+                className="px-2.5 bg-zinc-700 text-zinc-400 rounded-lg text-xs shrink-0" title="Generar">🎲</button>
             </div>
-
-            {/* Problema */}
-            <div>
-              <p className="text-zinc-500 text-[0.6rem] font-semibold uppercase tracking-widest mb-1">Problema</p>
-              <p className="text-white text-sm font-semibold leading-snug">{analisisLocal.problema_principal}</p>
-            </div>
-
-            {/* Puntos de dolor */}
-            {analisisLocal.puntos_de_dolor?.length > 0 && (
-              <div className="grid gap-1">
-                {analisisLocal.puntos_de_dolor.map((d, i) => (
-                  <p key={i} className="text-zinc-400 text-xs flex gap-2">
-                    <span className="text-red-500 shrink-0">•</span>{d}
-                  </p>
-                ))}
-              </div>
-            )}
-
-            {/* Módulos */}
-            {analisisLocal.modulos_que_resuelven?.length > 0 && (
-              <div>
-                <p className="text-zinc-500 text-[0.6rem] font-semibold uppercase tracking-widest mb-1.5">SAU lo resuelve con</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {analisisLocal.modulos_que_resuelven.map(id => <ModuloChip key={id} id={id} />)}
-                </div>
-              </div>
-            )}
-
-            {/* Lo que no cubrimos */}
-            {analisisLocal.lo_que_no_cubrimos && (
-              <p className="text-amber-600 text-xs flex gap-2">
-                <span className="shrink-0">⚠️</span>
-                <span>No cubrimos: {analisisLocal.lo_que_no_cubrimos}</span>
-              </p>
-            )}
-
-            {/* Script para Facundo */}
-            {analisisLocal.script_para_facundo && (
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <p className="text-zinc-500 text-[0.6rem] font-semibold uppercase tracking-widest">📝 Tu script</p>
-                  <button onClick={copiarScript}
-                    className={`text-[0.6rem] font-bold transition-colors ${scriptCopiado ? 'text-emerald-400' : 'text-zinc-500 hover:text-zinc-300'}`}>
-                    {scriptCopiado ? '✓ Copiado' : 'Copiar'}
-                  </button>
-                </div>
-                <div className="bg-zinc-900 border border-emerald-500/20 rounded-xl p-3">
-                  <p className="text-emerald-300 text-sm leading-relaxed italic">
-                    "{analisisLocal.script_para_facundo}"
-                  </p>
-                </div>
-              </div>
-            )}
           </div>
 
-        ) : (
-          <button onClick={analizarConsulta} disabled={analizando}
-            className="w-full py-3 rounded-2xl bg-zinc-800/60 border border-zinc-700 text-sm font-bold flex items-center justify-center gap-2 active:scale-95 transition-all hover:border-zinc-600 disabled:opacity-50">
-            {analizando ? (
-              <>
-                <div className="w-4 h-4 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
-                <span className="text-zinc-400">Analizando audio...</span>
-              </>
+          <div className="grid grid-cols-2 gap-2 mt-1">
+            <button onClick={guardar} disabled={guardando}
+              className={`py-2.5 rounded-xl text-xs font-bold transition-all active:scale-95 ${okMsg ? 'bg-emerald-500 text-white' : 'bg-indigo-600 text-white'} disabled:opacity-50`}>
+              {guardando ? '...' : okMsg ? '✓ Guardado' : 'Guardar cambios'}
+            </button>
+            {tel ? (
+              <a href={`https://wa.me/${tel}?text=${waMsg}`} target="_blank" rel="noopener noreferrer"
+                className="py-2.5 rounded-xl text-xs font-bold text-[#25D366] bg-[#25D366]/10 text-center">
+                📲 Enviar acceso
+              </a>
             ) : (
-              <>
-                <span>🤖</span>
-                <span className="text-zinc-300">Analizar con IA</span>
-              </>
+              <button onClick={() => navigator.clipboard.writeText(`${BASE_URL}/login\n${email}${clave ? '\n' + clave : ''}`)}
+                className="py-2.5 rounded-xl text-xs font-bold text-zinc-400 bg-zinc-800">📋 Copiar acceso</button>
             )}
-          </button>
-        )}
-      </div>
-
-      <div className="mx-4 h-px bg-zinc-800 mb-3" />
-
-      {/* Sección respuesta */}
-      <div className="px-4 pb-4">
-        {c.audio_respuesta_url ? (
-          <div className="grid gap-2">
-            <p className="text-zinc-600 text-[0.6rem] font-semibold uppercase tracking-widest mb-1">🎙️ Tu respuesta</p>
-            <audio src={c.audio_respuesta_url} controls className="w-full rounded-xl" style={{ colorScheme:'dark' }} />
-            <div className="grid grid-cols-2 gap-2 mt-1">
-              <button onClick={copiarLink}
-                className={`py-2.5 rounded-2xl text-xs font-bold transition-all ${
-                  linkCopiado ? 'bg-emerald-500 text-white' : 'bg-zinc-800 text-zinc-400 active:scale-95'
-                }`}>
-                {linkCopiado ? '✓ Copiado' : '🔗 Copiar link'}
-              </button>
-              {c.telefono ? (
-                <a href={`https://wa.me/${c.telefono.replace(/\D/g,'')}?text=${waMsg}`}
-                  target="_blank" rel="noopener noreferrer"
-                  className="py-2.5 rounded-2xl text-xs font-bold bg-[#25D366]/10 text-[#25D366] text-center active:scale-95 transition-all">
-                  📲 Enviar por WA
-                </a>
-              ) : (
-                <button onClick={copiarLink}
-                  className="py-2.5 rounded-2xl text-xs font-bold bg-zinc-800 text-zinc-500">
-                  Compartir link
-                </button>
-              )}
-            </div>
           </div>
-
-        ) : fase === 'idle' ? (
-          <button onClick={() => setFase('listo')}
-            className="w-full py-3 rounded-2xl bg-zinc-800 text-zinc-400 text-sm font-bold flex items-center justify-center gap-2 active:scale-95 transition-all hover:bg-zinc-700">
-            🎙️ <span>Grabar respuesta</span>
-          </button>
-
-        ) : fase === 'listo' ? (
-          <div className="grid gap-2">
-            <p className="text-zinc-500 text-xs text-center mb-1">Dale "Empezar" cuando estés listo</p>
-            <button onClick={iniciarGrabacion}
-              className="w-full py-3 rounded-2xl bg-emerald-500/10 text-emerald-400 text-sm font-bold ring-1 ring-emerald-500/30 active:scale-95 transition-all">
-              🟢 Empezar a grabar
-            </button>
-            <button onClick={() => setFase('idle')} className="text-zinc-700 text-xs text-center py-1">Cancelar</button>
-          </div>
-
-        ) : fase === 'grabando' ? (
-          <div className="grid gap-3">
-            <div className="flex items-center justify-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
-              <span className="text-red-400 font-extrabold text-xl font-mono">{formatTiempo(segundos)}</span>
-            </div>
-            <button onClick={() => mrRef.current?.stop()}
-              className="w-full py-3 rounded-2xl bg-red-500/10 text-red-400 text-sm font-bold ring-1 ring-red-500/30 active:scale-95 transition-all">
-              ⬛ Detener grabación
-            </button>
-          </div>
-
-        ) : fase === 'grabado' && urlResp ? (
-          <div className="grid gap-2">
-            <p className="text-zinc-600 text-[0.6rem] font-semibold uppercase tracking-widest mb-1">Previa de tu respuesta</p>
-            <audio src={urlResp} controls className="w-full rounded-xl" style={{ colorScheme:'dark' }} />
-            <div className="grid grid-cols-2 gap-2 mt-1">
-              <button onClick={() => { setBlobResp(null); setUrlResp(null); setFase('idle') }}
-                className="py-2.5 rounded-2xl bg-zinc-800 text-zinc-500 text-xs font-bold active:scale-95">
-                Regrabar
-              </button>
-              <button onClick={guardar}
-                className="py-2.5 rounded-2xl bg-white text-zinc-900 text-xs font-bold active:scale-95">
-                Guardar ✓
-              </button>
-            </div>
-          </div>
-
-        ) : fase === 'guardando' ? (
-          <div className="flex items-center justify-center gap-2 py-3">
-            <div className="w-4 h-4 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
-            <span className="text-zinc-500 text-sm">Subiendo respuesta...</span>
-          </div>
-        ) : null}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
 
-// ── Lista de consultas ────────────────────────────────────────────
-function Consultas() {
-  const [consultas, setConsultas] = useState([])
+// ── Modal: agregar usuario a la empresa ──────────────────────────
+function ModalAgregarUsuario({ onCrear, onCerrar }) {
+  const [nombre,   setNombre]   = useState('')
+  const [email,    setEmail]    = useState('')
+  const [clave,    setClave]    = useState(() => generarClave())
+  const [rol,      setRol]      = useState('dueno')
+  const [guardando,setGuardando]= useState(false)
+  const [error,    setError]    = useState(null)
 
-  async function cargar() {
-    const { data } = await supabase
-      .from('consulta_sau')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(20)
-    setConsultas(data || [])
+  async function crear() {
+    if (!nombre.trim()) return setError('Ingresá el nombre')
+    if (!email.trim())  return setError('Ingresá el email')
+    if (!clave.trim())  return setError('Ingresá la contraseña')
+    setError(null); setGuardando(true)
+    const ok = await onCrear({ nombre: nombre.trim(), email: email.trim(), password: clave.trim(), rol })
+    setGuardando(false)
+    if (ok) onCerrar()
   }
-
-  useEffect(() => { cargar() }, [])
-
-  const nuevas = consultas.filter(c => c.estado === 'nueva').length
-  if (consultas.length === 0) return null
 
   return (
-    <div className="grid gap-3">
-      <p className="text-xs text-zinc-500 font-semibold uppercase tracking-widest flex items-center gap-2">
-        🎤 Audios entrantes
-        {nuevas > 0 && (
-          <span className="bg-red-500 text-white text-[0.6rem] font-black px-1.5 py-0.5 rounded-full animate-pulse">
-            {nuevas}
-          </span>
-        )}
-      </p>
-      {consultas.map(c => (
-        <ConsultaCard key={c.id} c={c} onActualizada={cargar} />
-      ))}
-      <div className="h-px bg-zinc-800" />
-    </div>
-  )
-}
+    <div className="fixed inset-0 bg-black/80 z-[70] flex items-end justify-center p-4" onClick={onCerrar}>
+      <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm rounded-3xl p-6 grid gap-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-white font-extrabold text-lg">Nuevo usuario</h3>
+          <button onClick={onCerrar} className="text-zinc-500 text-2xl">×</button>
+        </div>
+        <p className="text-zinc-500 text-xs -mt-2">Cada usuario entra con su propio login y sus movimientos quedan registrados aparte.</p>
 
-// ── Modal detalle cliente ─────────────────────────────────────────
-function DetalleCliente({ cliente, stats, onCerrar, onActualizado }) {
-  const [notas,     setNotas]     = useState(cliente.notas_admin || '')
-  const [estado,    setEstado]    = useState(cliente.estado_suscripcion || 'gratuito')
-  const [modulos,   setModulos]   = useState(cliente.modulos_activos || [])
-  const [guardando, setGuardando] = useState(false)
-  const [guardado,  setGuardado]  = useState(false)
-
-  async function guardar() {
-    setGuardando(true)
-    await supabase.from('empresa').update({
-      notas_admin: notas, estado_suscripcion: estado, modulos_activos: modulos,
-    }).eq('id', cliente.id)
-    setGuardando(false); setGuardado(true)
-    setTimeout(() => setGuardado(false), 2000)
-    onActualizado()
-  }
-
-  function toggleModulo(id) {
-    const mod = MODULOS.find(m => m.id === id)
-    if (mod?.nucleo) return
-    setModulos(prev => prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id])
-  }
-
-  const bur = BURBUJA[estado] || BURBUJA.gratuito
-
-  return (
-    <div className="fixed inset-0 bg-black/80 z-50 flex items-end justify-center">
-      <div className="bg-zinc-900 border border-zinc-800 w-full max-w-[560px] rounded-t-[2rem] shadow-2xl max-h-[92vh] overflow-y-auto">
-        <div className="sticky top-0 bg-zinc-900 px-5 pt-5 pb-4 border-b border-zinc-800 flex items-center gap-3 rounded-t-[2rem]">
-          <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${bur.grad} flex items-center justify-center text-white font-extrabold text-lg shrink-0`}>
-            {iniciales(cliente.nombre_fantasia || cliente.razon_social)}
-          </div>
-          <div className="flex-1 min-w-0">
-            <h2 className="font-extrabold text-white truncate">{cliente.nombre_fantasia || cliente.razon_social}</h2>
-            <p className="text-xs text-zinc-500">{cliente.cuit && `CUIT ${cliente.cuit} · `}{cliente.condicion_fiscal}</p>
-          </div>
-          <button onClick={onCerrar} className="w-10 h-10 rounded-full bg-zinc-800 text-zinc-400 flex items-center justify-center text-xl">×</button>
+        {/* Rol */}
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" onClick={() => setRol('dueno')}
+            className={`py-3 rounded-2xl text-sm font-bold transition-all ${rol === 'dueno' ? 'bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30' : 'bg-zinc-800 text-zinc-500'}`}>
+            👑 Dueño<br /><span className="text-[0.6rem] font-normal opacity-70">Ve todo y aprueba</span>
+          </button>
+          <button type="button" onClick={() => setRol('empleado')}
+            className={`py-3 rounded-2xl text-sm font-bold transition-all ${rol === 'empleado' ? 'bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30' : 'bg-zinc-800 text-zinc-500'}`}>
+            🧑‍🔧 Empleado<br /><span className="text-[0.6rem] font-normal opacity-70">Crea, no aprueba</span>
+          </button>
         </div>
 
-        <div className="px-5 py-4 grid gap-5">
+        <input type="text" placeholder="Nombre (ej: Gonzalo)" value={nombre} onChange={e => setNombre(e.target.value)}
+          className="w-full px-4 py-3 rounded-2xl bg-zinc-800 border border-zinc-700 outline-none text-white placeholder:text-zinc-600 focus:border-indigo-500 text-sm" />
+        <input type="email" placeholder="Email (ej: joaco@sau.app)" value={email} onChange={e => setEmail(e.target.value)}
+          className="w-full px-4 py-3 rounded-2xl bg-zinc-800 border border-zinc-700 outline-none text-white placeholder:text-zinc-600 focus:border-indigo-500 text-sm" />
+        <div className="flex gap-2">
+          <input type="text" placeholder="Contraseña" value={clave} onChange={e => setClave(e.target.value)}
+            className="flex-1 px-4 py-3 rounded-2xl bg-zinc-800 border border-zinc-700 outline-none text-white placeholder:text-zinc-600 focus:border-indigo-500 text-sm font-mono" />
+          <button type="button" onClick={() => setClave(generarClave())}
+            className="px-3 rounded-2xl bg-zinc-700 text-zinc-400 text-xs shrink-0">🎲</button>
+        </div>
+
+        {error && <p className="text-red-400 text-sm text-center font-semibold">{error}</p>}
+
+        <button onClick={crear} disabled={guardando}
+          className="w-full py-4 rounded-2xl bg-indigo-600 text-white font-extrabold disabled:opacity-50 active:scale-95">
+          {guardando ? 'Creando…' : '✓ Crear usuario'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Actividad de Fiado (vista admin) ─────────────────────────────
+function fmtMonto(n) {
+  return '$' + Math.abs(Number(n) || 0).toLocaleString('es-AR')
+}
+function fmtFecha(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) + ' ' +
+         d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+}
+
+function ActividadFiado({ data, cargando }) {
+  const [verMovs, setVerMovs] = useState(false)
+
+  if (cargando) return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl py-6 flex justify-center">
+      <div className="w-5 h-5 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
+    </div>
+  )
+  if (!data) return null
+
+  const { resumen, clientes, movimientos } = data
+  const sinActividad = resumen.total_clientes === 0 && resumen.total_movimientos === 0
+
+  return (
+    <div className="grid gap-2">
+      <p className="text-zinc-500 text-[0.6rem] font-bold uppercase tracking-widest px-1">📒 Actividad de Fiado</p>
+
+      {sinActividad ? (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-5 text-center">
+          <p className="text-2xl mb-1">🫥</p>
+          <p className="text-zinc-400 text-sm font-semibold">Todavía no cargaron nada</p>
+          <p className="text-zinc-600 text-xs mt-1">Sin clientes ni movimientos registrados</p>
+        </div>
+      ) : (
+        <>
+          {/* Resumen */}
           <div className="grid grid-cols-3 gap-2">
-            {[
-              { label: 'Ventas este mes', value: stats?.ventas_mes    ?? '—' },
-              { label: 'Miembros',        value: stats?.miembros      ?? '—' },
-              { label: 'Última actividad',value: diasDesde(stats?.ultima_actividad) || 'Nunca' },
-            ].map(s => (
-              <div key={s.label} className="bg-zinc-800 rounded-2xl px-3 py-3 text-center">
-                <p className="text-xl font-extrabold text-white">{s.value}</p>
-                <p className="text-[0.6rem] text-zinc-500 font-semibold uppercase tracking-widest mt-0.5 leading-tight">{s.label}</p>
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-3 text-center">
+              <p className="text-white text-lg font-extrabold">{resumen.total_clientes}</p>
+              <p className="text-zinc-600 text-[0.6rem]">clientes</p>
+            </div>
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-3 text-center">
+              <p className="text-white text-lg font-extrabold">{resumen.total_movimientos}</p>
+              <p className="text-zinc-600 text-[0.6rem]">movimientos</p>
+            </div>
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-3 text-center">
+              <p className="text-red-400 text-lg font-extrabold">{fmtMonto(resumen.saldo_total)}</p>
+              <p className="text-zinc-600 text-[0.6rem]">deuda total</p>
+            </div>
+          </div>
+
+          {/* Clientes con saldo */}
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
+            {clientes.map(c => (
+              <div key={c.id} className="px-4 py-2.5 flex items-center justify-between gap-2 border-b border-zinc-800 last:border-0">
+                <div className="min-w-0">
+                  <p className="text-zinc-200 text-sm font-semibold truncate">{c.nombre}</p>
+                  {c.telefono && <p className="text-zinc-600 text-[0.65rem]">{c.telefono}</p>}
+                </div>
+                <div className="text-right shrink-0">
+                  {Number(c.saldo_actual) > 0 ? (
+                    <p className="text-red-400 text-sm font-extrabold">{fmtMonto(c.saldo_actual)}</p>
+                  ) : Number(c.saldo_actual) < 0 ? (
+                    <p className="text-emerald-400 text-sm font-extrabold">a favor</p>
+                  ) : (
+                    <p className="text-emerald-500 text-xs font-bold">✓ al día</p>
+                  )}
+                </div>
               </div>
             ))}
           </div>
 
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs text-zinc-500 font-semibold uppercase tracking-widest">Módulos activos</p>
-              <p className="text-xs text-zinc-400 font-bold">{modulos.length}/{MODULOS.length}</p>
-            </div>
-            <div className="w-full bg-zinc-800 rounded-full h-2 mb-3">
-              <div className="bg-emerald-500 h-2 rounded-full transition-all"
-                style={{ width: `${(modulos.length / MODULOS.length) * 100}%` }} />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {MODULOS.map(m => {
-                const activo = modulos.includes(m.id)
-                return (
-                  <button key={m.id} onClick={() => toggleModulo(m.id)} disabled={m.nucleo}
-                    className={`flex items-center gap-2 px-3 py-2.5 rounded-2xl text-sm font-bold transition-all ${
-                      activo ? 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/30' : 'bg-zinc-800 text-zinc-600'
-                    } ${m.nucleo ? 'opacity-60 cursor-not-allowed' : ''}`}>
-                    <span>{m.icon}</span>
-                    <span className="flex-1 text-left truncate">{m.titulo.split(' ')[0]}</span>
-                    {!m.nucleo && (
-                      <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center text-[0.5rem] font-black ${
-                        activo ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-zinc-600'
-                      }`}>{activo ? '✓' : ''}</span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          <div>
-            <p className="text-xs text-zinc-500 font-semibold uppercase tracking-widest mb-2">Estado de cuenta</p>
-            <div className="grid grid-cols-2 gap-2">
-              {Object.entries(SUSCRIPCION).map(([id, cfg]) => (
-                <button key={id} onClick={() => setEstado(id)}
-                  className={`py-2.5 rounded-2xl text-sm font-bold transition-all flex items-center justify-center gap-2 ${
-                    estado === id
-                      ? `${cfg.bg} ${cfg.text} ring-2 ring-current ring-offset-1 ring-offset-zinc-900`
-                      : 'bg-zinc-800 text-zinc-500'
-                  }`}>
-                  <span className={`w-2 h-2 rounded-full ${estado === id ? cfg.dot : 'bg-zinc-600'}`} />
-                  {cfg.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <p className="text-xs text-zinc-500 font-semibold uppercase tracking-widest mb-2">Mis notas privadas</p>
-            <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={3}
-              placeholder="Solo vos ves esto..."
-              className="w-full px-4 py-3 rounded-2xl bg-zinc-800 border border-zinc-700 outline-none text-zinc-300 placeholder:text-zinc-700 resize-none text-sm focus:border-emerald-500 transition-colors"
-            />
-          </div>
-
-          <button onClick={guardar} disabled={guardando}
-            className={`w-full py-4 rounded-3xl font-extrabold text-base active:scale-95 transition-all ${
-              guardado ? 'bg-emerald-500 text-white' : 'bg-white text-zinc-900'
-            }`}>
-            {guardando ? 'Guardando…' : guardado ? '✓ Guardado' : 'Guardar'}
-          </button>
-        </div>
-      </div>
+          {/* Movimientos (colapsable) */}
+          {movimientos.length > 0 && (
+            <button onClick={() => setVerMovs(v => !v)}
+              className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 text-left w-full">
+              <div className="flex items-center justify-between">
+                <p className="text-zinc-400 text-xs font-bold">🧾 Ver últimos movimientos ({movimientos.length})</p>
+                <span className="text-zinc-700 text-sm">{verMovs ? '▲' : '▼'}</span>
+              </div>
+              {verMovs && (
+                <div className="mt-3 grid gap-2 pt-3 border-t border-zinc-800">
+                  {movimientos.slice(0, 30).map(m => {
+                    const esFiado = m.tipo === 'fiado'
+                    const cli = clientes.find(c => c.id === m.cliente_fiado_id)
+                    return (
+                      <div key={m.id} className="flex items-center gap-2.5">
+                        <span className="text-base shrink-0">{esFiado ? '🛒' : '💵'}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-zinc-300 text-xs font-semibold truncate">
+                            {cli?.nombre || 'Cliente'} {m.descripcion ? `· ${m.descripcion}` : ''}
+                          </p>
+                          <p className="text-zinc-600 text-[0.6rem]">
+                            {fmtFecha(m.created_at)}
+                            {m.registrado_nombre && ` · ${m.registrado_nombre}`}
+                          </p>
+                        </div>
+                        <p className={`text-xs font-extrabold shrink-0 ${esFiado ? 'text-red-400' : 'text-emerald-400'}`}>
+                          {esFiado ? '+' : '−'}{fmtMonto(m.monto)}
+                        </p>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </button>
+          )}
+        </>
+      )}
     </div>
   )
 }
 
-// ── Burbuja cliente ───────────────────────────────────────────────
-function Burbuja({ cliente, stats, index, onClick }) {
-  const estado = cliente.estado_suscripcion || 'gratuito'
-  const bur    = BURBUJA[estado] || BURBUJA.gratuito
-  const nombre = cliente.nombre_fantasia || cliente.razon_social || '?'
-  const dias   = stats?.ultima_actividad
-    ? Math.floor((Date.now() - new Date(stats.ultima_actividad).getTime()) / 86400000)
-    : 999
-  const saludRing = dias > 14 ? 'ring-red-500' : dias > 7 ? 'ring-amber-400' : 'ring-emerald-400'
+// ── Configuración del Agente IA de WhatsApp ──────────────────────
+const ACCIONES_AGENTE = [
+  { id: 'responder_consultas',  label: '💬 Responder consultas' },
+  { id: 'crear_presupuesto',    label: '📄 Crear presupuestos' },
+  { id: 'registrar_pedido',     label: '🛒 Registrar pedidos' },
+  { id: 'consultar_stock',      label: '📦 Consultar stock' },
+  { id: 'registrar_venta',      label: '💵 Registrar ventas' },
+]
 
-  return (
-    <div className="flex flex-col items-center gap-2 cursor-pointer" onClick={onClick}>
-      <button
-        className={`burbuja w-20 h-20 rounded-full bg-gradient-to-br ${bur.grad}
-          shadow-xl ${bur.glow} ring-2 ${saludRing} ring-offset-2 ring-offset-zinc-950
-          flex items-center justify-center active:scale-90 transition-transform`}
-        style={{ animationDelay: `${(index % 8) * 0.4}s` }}
-      >
-        <span className="text-white font-black text-xl drop-shadow">{iniciales(nombre)}</span>
-      </button>
-      <div className="text-center">
-        <p className="text-zinc-300 text-xs font-semibold truncate max-w-[80px]">{nombre}</p>
-        <p className="text-zinc-600 text-[0.6rem]">{diasDesde(stats?.ultima_actividad) || 'sin actividad'}</p>
-      </div>
-    </div>
-  )
-}
+function ConfigAgente({ empresaId }) {
+  const [cfg,      setCfg]      = useState(null)
+  const [cargando, setCargando] = useState(true)
+  const [guardando,setGuardando]= useState(false)
+  const [ok,       setOk]       = useState(false)
 
-// ── Admin SAU principal ───────────────────────────────────────────
-export default function AdminSAU() {
-  const { signOut } = useAuth()
-
-  const [clientes,     setClientes]     = useState([])
-  const [statsMap,     setStatsMap]     = useState({})
-  const [cargando,     setCargando]     = useState(true)
-  const [seleccionado, setSeleccionado] = useState(null)
-  const [filtro,       setFiltro]       = useState('todos')
+  useEffect(() => { cargar() }, [empresaId])
 
   async function cargar() {
     setCargando(true)
-    const { data: empresas } = await supabase.from('empresa').select('*').order('created_at', { ascending: false })
-    if (!empresas) { setCargando(false); return }
-    setClientes(empresas)
+    const { data } = await supabase.from('agente_config').select('*').eq('empresa_id', empresaId).maybeSingle()
+    setCfg(data || {
+      empresa_id: empresaId, nombre: 'Asistente', activo: false,
+      whatsapp_numero: '', acciones_permitidas: [], estado: 'pendiente',
+    })
+    setCargando(false)
+  }
 
-    const ahora     = new Date()
-    const inicio    = new Date(ahora.getFullYear(), ahora.getMonth(), 1)
-    const inicioAnt = new Date(ahora.getFullYear(), ahora.getMonth() - 1, 1)
-    const finAnt    = new Date(inicio)
+  function setCampo(k, v) { setCfg(c => ({ ...c, [k]: v })) }
 
-    const arr = await Promise.all(empresas.map(async e => {
-      const [{ count: vm }, { count: va }, { count: mem }, { data: ult }] = await Promise.all([
-        supabase.from('venta').select('id', { count:'exact', head:true }).eq('empresa_id', e.id).gte('created_at', inicio.toISOString()),
-        supabase.from('venta').select('id', { count:'exact', head:true }).eq('empresa_id', e.id).gte('created_at', inicioAnt.toISOString()).lt('created_at', finAnt.toISOString()),
-        supabase.from('membresia').select('id', { count:'exact', head:true }).eq('empresa_id', e.id).eq('activa', true),
-        supabase.from('venta').select('created_at').eq('empresa_id', e.id).order('created_at', { ascending: false }).limit(1),
-      ])
-      const crecimiento = (va||0) > 0 ? Math.round((((vm||0) - (va||0)) / (va||0)) * 100) : 0
-      return { id: e.id, ventas_mes: vm||0, crecimiento, miembros: mem||0, ultima_actividad: ult?.[0]?.created_at || null }
-    }))
+  function toggleAccion(id) {
+    setCfg(c => {
+      const acc = c.acciones_permitidas || []
+      return { ...c, acciones_permitidas: acc.includes(id) ? acc.filter(a => a !== id) : [...acc, id] }
+    })
+  }
 
-    const map = {}; arr.forEach(s => { map[s.id] = s })
-    setStatsMap(map)
+  async function guardar() {
+    setGuardando(true)
+    const payload = {
+      empresa_id:          empresaId,
+      nombre:              (cfg.nombre || 'Asistente').trim(),
+      activo:              !!cfg.activo,
+      whatsapp_numero:     cfg.whatsapp_numero?.trim() || null,
+      acciones_permitidas: cfg.acciones_permitidas || [],
+    }
+    const { error } = await supabase.from('agente_config').upsert(payload, { onConflict: 'empresa_id' })
+    setGuardando(false)
+    if (!error) { setOk(true); setTimeout(() => setOk(false), 2000) }
+    else alert('No se pudo guardar la config del agente')
+  }
+
+  if (cargando) return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 text-zinc-600 text-sm">Cargando agente…</div>
+  )
+
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 grid gap-3">
+      <div className="flex items-center justify-between">
+        <p className="text-zinc-500 text-[0.6rem] font-bold uppercase tracking-widest">🤖 Agente de WhatsApp</p>
+        <button onClick={() => setCampo('activo', !cfg.activo)}
+          className={`flex items-center gap-2 px-2.5 py-1 rounded-full text-[0.65rem] font-bold transition-all ${
+            cfg.activo ? 'bg-emerald-500/15 text-emerald-400' : 'bg-zinc-800 text-zinc-500'
+          }`}>
+          <span className={`w-7 h-4 rounded-full relative transition-all ${cfg.activo ? 'bg-emerald-500' : 'bg-zinc-600'}`}>
+            <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${cfg.activo ? 'left-3.5' : 'left-0.5'}`} />
+          </span>
+          {cfg.activo ? 'Activo' : 'Pausado'}
+        </button>
+      </div>
+
+      <div className="grid gap-2">
+        <div className="bg-zinc-800/60 rounded-2xl px-3 py-2">
+          <p className="text-zinc-500 text-[0.55rem] font-bold uppercase tracking-widest mb-0.5">Nombre del agente</p>
+          <input value={cfg.nombre || ''} onChange={e => setCampo('nombre', e.target.value)}
+            placeholder="Ej: Antonella"
+            className="w-full bg-transparent text-zinc-100 font-bold outline-none placeholder:text-zinc-600" />
+        </div>
+        <div className="bg-zinc-800/60 rounded-2xl px-3 py-2">
+          <p className="text-zinc-500 text-[0.55rem] font-bold uppercase tracking-widest mb-0.5">Número de WhatsApp</p>
+          <input value={cfg.whatsapp_numero || ''} onChange={e => setCampo('whatsapp_numero', e.target.value)}
+            placeholder="+54 9 387 555 1234"
+            className="w-full bg-transparent text-zinc-100 font-bold outline-none placeholder:text-zinc-600" />
+        </div>
+      </div>
+
+      <div>
+        <p className="text-zinc-500 text-[0.55rem] font-bold uppercase tracking-widest mb-2">Qué puede hacer</p>
+        <div className="grid gap-1.5">
+          {ACCIONES_AGENTE.map(a => {
+            const on = (cfg.acciones_permitidas || []).includes(a.id)
+            return (
+              <button key={a.id} onClick={() => toggleAccion(a.id)}
+                className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                  on ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30' : 'bg-zinc-800 text-zinc-500'
+                }`}>
+                {a.label}
+                <span className={on ? 'text-emerald-400' : 'text-zinc-600'}>{on ? '✓' : '+'}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      <button onClick={guardar} disabled={guardando}
+        className="w-full py-3 rounded-2xl bg-emerald-500 text-white font-extrabold text-sm active:scale-95 transition-all disabled:opacity-50">
+        {guardando ? 'Guardando…' : ok ? '✓ Guardado' : 'Guardar agente'}
+      </button>
+
+      {cfg.estado && cfg.estado !== 'pendiente' && (
+        <p className="text-center text-[0.6rem] text-zinc-600">Estado de conexión: {cfg.estado}</p>
+      )}
+    </div>
+  )
+}
+
+// ── Panel del cliente — versión compacta ─────────────────────────
+function ClientePanel({ empresaId, lead, onCerrar }) {
+  const [empresa,      setEmpresa]      = useState(null)
+  const [cargando,     setCargando]     = useState(true)
+  const [nota,         setNota]         = useState('')
+  const [guardNota,    setGuardNota]    = useState(false)
+  const [notaOk,       setNotaOk]       = useState(false)
+  const [verContexto,  setVerContexto]  = useState(false)
+  const [verScript,    setVerScript]    = useState(false)
+  const [usuarios,     setUsuarios]     = useState([])
+  const [cargUsuarios, setCargUsuarios] = useState(true)
+  const [agregando,    setAgregando]    = useState(false)
+  const [actividad,    setActividad]    = useState(null)
+  const [cargActiv,    setCargActiv]    = useState(true)
+  const [modsOk,       setModsOk]       = useState(false)
+  const [razon,        setRazon]        = useState('')
+  const [guardRazon,   setGuardRazon]   = useState(false)
+  const [razonOk,      setRazonOk]      = useState(false)
+
+  useEffect(() => { cargarEmpresa(); cargarUsuarios(); cargarActividad() }, [empresaId])
+
+  async function cargarEmpresa() {
+    setCargando(true)
+    const { data } = await supabase.from('empresa').select('*').eq('id', empresaId).single()
+    if (data) { setEmpresa(data); setNota(data.notas_admin || ''); setRazon(data.razon_social || '') }
+    setCargando(false)
+  }
+
+  async function guardarRazon() {
+    setGuardRazon(true)
+    await supabase.from('empresa').update({ razon_social: razon.trim() }).eq('id', empresa.id)
+    setEmpresa(e => ({ ...e, razon_social: razon.trim() }))
+    setGuardRazon(false); setRazonOk(true)
+    setTimeout(() => setRazonOk(false), 2000)
+  }
+
+  async function cargarUsuarios() {
+    setCargUsuarios(true)
+    const { data } = await supabase.functions.invoke('usuarios-empresa', {
+      body: { action: 'listar', empresa_id: empresaId }
+    })
+    setUsuarios(data?.usuarios || [])
+    setCargUsuarios(false)
+  }
+
+  async function cargarActividad() {
+    setCargActiv(true)
+    const { data } = await supabase.functions.invoke('actividad-fiado', {
+      body: { empresa_id: empresaId }
+    })
+    setActividad(data?.ok ? data : null)
+    setCargActiv(false)
+  }
+
+  async function toggleModulo(modId) {
+    const activos = empresa.modulos_activos || []
+    const nuevo = activos.includes(modId) ? activos.filter(m => m !== modId) : [...activos, modId]
+    // Optimista en pantalla
+    setEmpresa(e => ({ ...e, modulos_activos: nuevo }))
+    const { error } = await supabase.from('empresa').update({ modulos_activos: nuevo }).eq('id', empresa.id)
+    if (error) {
+      alert('No se pudo guardar el cambio de módulos')
+      setEmpresa(e => ({ ...e, modulos_activos: activos })) // revertir
+      return
+    }
+    setModsOk(true)
+    setTimeout(() => setModsOk(false), 1800)
+  }
+
+  async function toggleMode() {
+    const nuevo = !empresa.modo_simulacion
+    await supabase.from('empresa').update({ modo_simulacion: nuevo }).eq('id', empresa.id)
+    setEmpresa(e => ({ ...e, modo_simulacion: nuevo }))
+  }
+
+  async function cambiarModoPresupuesto(modo) {
+    if (empresa.presupuesto_modo === modo) return
+    await supabase.from('empresa').update({ presupuesto_modo: modo }).eq('id', empresa.id)
+    setEmpresa(e => ({ ...e, presupuesto_modo: modo }))
+  }
+
+  async function cambiarModoStock(modo) {
+    if ((empresa.modo_stock || 'completo') === modo) return
+    await supabase.from('empresa').update({ modo_stock: modo }).eq('id', empresa.id)
+    setEmpresa(e => ({ ...e, modo_stock: modo }))
+  }
+
+  async function guardarNota() {
+    setGuardNota(true)
+    await supabase.from('empresa').update({ notas_admin: nota }).eq('id', empresa.id)
+    setGuardNota(false); setNotaOk(true)
+    setTimeout(() => setNotaOk(false), 2000)
+  }
+
+  async function crearUsuario({ nombre, email, password, rol }) {
+    const { data } = await supabase.functions.invoke('usuarios-empresa', {
+      body: { action: 'crear', empresa_id: empresaId, nombre, email, password, rol: rol || 'dueno' }
+    })
+    if (!data?.ok) { alert(data?.error || 'No se pudo crear el usuario'); return false }
+    await cargarUsuarios()
+    return true
+  }
+
+  async function actualizarUsuario(usuario_id, cambios) {
+    const { data } = await supabase.functions.invoke('usuarios-empresa', {
+      body: { action: 'actualizar', usuario_id, ...cambios }
+    })
+    if (!data?.ok) { alert(data?.error || 'No se pudo actualizar'); return false }
+    await cargarUsuarios()
+    return true
+  }
+
+  if (cargando) return (
+    <div className="fixed inset-0 bg-zinc-950 z-[60] flex items-center justify-center">
+      <div className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+    </div>
+  )
+
+  const ob      = empresa?.onboarding
+  const analisis = lead?.analisis
+  const activos  = empresa?.modulos_activos || []
+  const tel      = lead?.telefono?.replace(/\D/g, '')
+  const problema = analisis?.problema_principal || ob?.problema
+
+  return (
+    <div className="fixed inset-0 bg-zinc-950 z-[60] overflow-y-auto">
+
+      {/* Header */}
+      <div className="sticky top-0 bg-zinc-950/98 backdrop-blur border-b border-zinc-800 px-5 py-4 flex items-center gap-3 z-10">
+        <button onClick={onCerrar} className="w-9 h-9 rounded-full bg-zinc-800 text-zinc-400 flex items-center justify-center shrink-0 text-lg">←</button>
+        <div className="flex-1 min-w-0">
+          <p className="text-zinc-600 text-[0.6rem] font-bold uppercase tracking-widest">Cliente SAU</p>
+          <p className="text-white font-extrabold truncate">{empresa?.nombre_fantasia}</p>
+        </div>
+        <button onClick={toggleMode}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ring-1 transition-all ${
+            empresa?.modo_simulacion
+              ? 'bg-amber-500/10 text-amber-400 ring-amber-500/20'
+              : 'bg-emerald-500/10 text-emerald-400 ring-emerald-500/20'
+          }`}>
+          {empresa?.modo_simulacion ? '🟡 Práctica' : '🟢 Real'}
+        </button>
+      </div>
+
+      <div className="max-w-lg mx-auto px-4 py-4 grid gap-4">
+
+        {/* ── Módulos ────────────────────────────────────────── */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 grid gap-3">
+          <div className="flex items-center justify-between">
+            <p className="text-zinc-500 text-[0.6rem] font-bold uppercase tracking-widest">Módulos activos · tildá solo lo que necesita</p>
+            {modsOk && <span className="text-emerald-400 text-[0.6rem] font-bold">✓ Guardado</span>}
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {MODS_ALL.map(m => {
+              const on = activos.includes(m.id)
+              return (
+                <button key={m.id} onClick={() => toggleModulo(m.id)}
+                  className={`py-3 rounded-2xl flex flex-col items-center gap-1 text-xs font-bold transition-all active:scale-95 ${
+                    on ? 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/30' : 'bg-zinc-800 text-zinc-600'
+                  }`}>
+                  <span className="text-xl">{m.icon}</span>
+                  {m.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* ── Estado rápido ──────────────────────────────────── */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className={`px-4 py-3 rounded-2xl flex items-center gap-2 ${
+            ob?.completado ? 'bg-emerald-500/5 border border-emerald-500/20' : 'bg-amber-500/5 border border-amber-500/20'
+          }`}>
+            <span>{ob?.completado ? '✅' : '⏳'}</span>
+            <p className={`text-xs font-bold ${ob?.completado ? 'text-emerald-400' : 'text-amber-400'}`}>
+              {ob?.completado ? 'Bienvenida ok' : 'Bienvenida pendiente'}
+            </p>
+          </div>
+          <div className="px-4 py-3 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center gap-2">
+            <span>📋</span>
+            <p className="text-zinc-400 text-xs font-bold">Docs en proceso</p>
+          </div>
+        </div>
+
+        {/* ── Razón social (nombre para documentos) ──────────── */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 grid gap-2">
+          <div className="flex items-center justify-between">
+            <p className="text-zinc-500 text-[0.6rem] font-bold uppercase tracking-widest">Razón social · sale en presupuestos/PDF</p>
+            {razonOk && <span className="text-emerald-400 text-[0.6rem] font-bold">✓ Guardado</span>}
+          </div>
+          <div className="flex gap-2">
+            <input type="text" value={razon} onChange={e => setRazon(e.target.value)}
+              placeholder="Ej: JDFAR SRL"
+              className="flex-1 bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-emerald-500" />
+            <button onClick={guardarRazon} disabled={guardRazon || !razon.trim()}
+              className="px-4 rounded-xl bg-emerald-500 text-white text-sm font-bold disabled:opacity-40 active:scale-95">
+              {guardRazon ? '...' : 'Guardar'}
+            </button>
+          </div>
+        </div>
+
+        {/* ── Modo de presupuesto (si el módulo está activo) ── */}
+        {activos.includes('presupuestos') && (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 grid gap-2">
+            <p className="text-zinc-500 text-[0.6rem] font-bold uppercase tracking-widest">Modo de presupuesto</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => cambiarModoPresupuesto('items')}
+                className={`py-3 rounded-2xl text-xs font-bold transition-all ${(empresa?.presupuesto_modo || 'items') === 'items' ? 'bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30' : 'bg-zinc-800 text-zinc-500'}`}>
+                🧱 Por ítems<br /><span className="text-[0.55rem] font-normal opacity-70">material por material</span>
+              </button>
+              <button onClick={() => cambiarModoPresupuesto('plantillas')}
+                className={`py-3 rounded-2xl text-xs font-bold transition-all ${empresa?.presupuesto_modo === 'plantillas' ? 'bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30' : 'bg-zinc-800 text-zinc-500'}`}>
+                📋 Plantillas<br /><span className="text-[0.55rem] font-normal opacity-70">paquetes con precio total</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Modo de stock (si el módulo está activo) ── */}
+        {activos.includes('stock') && (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 grid gap-2">
+            <p className="text-zinc-500 text-[0.6rem] font-bold uppercase tracking-widest">Modo de stock</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => cambiarModoStock('completo')}
+                className={`py-3 rounded-2xl text-xs font-bold transition-all ${(empresa?.modo_stock || 'completo') === 'completo' ? 'bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30' : 'bg-zinc-800 text-zinc-500'}`}>
+                🔢 Completo<br /><span className="text-[0.55rem] font-normal opacity-70">cuenta unidades y movimientos</span>
+              </button>
+              <button onClick={() => cambiarModoStock('simple')}
+                className={`py-3 rounded-2xl text-xs font-bold transition-all ${empresa?.modo_stock === 'simple' ? 'bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30' : 'bg-zinc-800 text-zinc-500'}`}>
+                🟢 Simple<br /><span className="text-[0.55rem] font-normal opacity-70">disponible / sin stock</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Agente IA de WhatsApp (si el módulo está activo) ── */}
+        {activos.includes('agente') && (
+          <ConfigAgente empresaId={empresa.id} />
+        )}
+
+        {/* ── Actividad de Fiado ─────────────────────────────── */}
+        {activos.includes('fiado') && (
+          <ActividadFiado data={actividad} cargando={cargActiv} />
+        )}
+
+        {/* ── Problema (colapsable) ───────────────────────────── */}
+        {problema && (
+          <button onClick={() => setVerContexto(v => !v)}
+            className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 text-left w-full active:scale-[0.99]">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <span className="text-base shrink-0">🧠</span>
+                <p className="text-zinc-300 text-sm font-semibold truncate">{problema}</p>
+              </div>
+              <span className="text-zinc-700 shrink-0 text-sm">{verContexto ? '▲' : '▼'}</span>
+            </div>
+            {verContexto && (
+              <div className="mt-3 grid gap-2 pt-3 border-t border-zinc-800">
+                {(analisis?.puntos_de_dolor || ob?.puntos_de_dolor || []).map((d, i) => (
+                  <p key={i} className="text-zinc-500 text-xs flex gap-2">
+                    <span className="text-red-500 shrink-0">•</span>{d}
+                  </p>
+                ))}
+                {(analisis?.modulos_que_resuelven || ob?.modulos || []).length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {(analisis?.modulos_que_resuelven || ob?.modulos).map(id => {
+                      const m = MODULOS.find(x => x.id === id)
+                      return m ? <span key={id} className="bg-emerald-500/10 text-emerald-400 text-xs font-bold px-2 py-0.5 rounded-full">{m.icon} {m.titulo.split(' ')[0]}</span> : null
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </button>
+        )}
+
+        {/* ── Script (colapsable) ────────────────────────────── */}
+        {analisis?.script_para_facundo && (
+          <button onClick={() => setVerScript(v => !v)}
+            className="bg-zinc-900 border border-emerald-500/20 rounded-2xl px-4 py-3 text-left w-full active:scale-[0.99]">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-emerald-500 text-xs font-bold">💬 Ver argumento de venta</p>
+              <span className="text-zinc-700 text-sm">{verScript ? '▲' : '▼'}</span>
+            </div>
+            {verScript && (
+              <p className="text-emerald-300 text-xs italic leading-relaxed mt-2 pt-2 border-t border-zinc-800">
+                "{analisis.script_para_facundo}"
+              </p>
+            )}
+          </button>
+        )}
+
+        {/* ── Nota rápida ────────────────────────────────────── */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 grid gap-2">
+          <textarea
+            value={nota}
+            onChange={e => setNota(e.target.value)}
+            placeholder="📝 Nota interna..."
+            rows={2}
+            className="w-full bg-transparent text-white text-sm placeholder:text-zinc-600 resize-none outline-none"
+          />
+          <button onClick={guardarNota} disabled={guardNota}
+            className={`py-1.5 rounded-xl text-xs font-bold transition-all text-right ${notaOk ? 'text-emerald-400' : 'text-zinc-600'}`}>
+            {guardNota ? 'Guardando...' : notaOk ? '✓ Guardado' : 'Guardar'}
+          </button>
+        </div>
+
+        {/* ── URL de ingreso ─────────────────────────────────── */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-zinc-600 text-[0.6rem] uppercase tracking-widest">URL de ingreso</p>
+            <p className="text-zinc-300 text-xs font-mono mt-0.5">{BASE_URL}/login</p>
+          </div>
+          <button onClick={() => navigator.clipboard.writeText(`${BASE_URL}/login`)}
+            className="text-zinc-600 text-xs shrink-0 bg-zinc-800 px-2 py-1 rounded-lg">Copiar</button>
+        </div>
+
+        {/* ── Usuarios de la empresa ─────────────────────────── */}
+        <div className="grid gap-2">
+          <div className="flex items-center justify-between px-1">
+            <p className="text-zinc-500 text-[0.6rem] font-bold uppercase tracking-widest">
+              👥 Usuarios ({usuarios.length})
+            </p>
+            <button onClick={() => setAgregando(true)}
+              className="text-indigo-400 text-xs font-bold bg-indigo-500/10 px-2.5 py-1 rounded-full border border-indigo-500/20 active:scale-95">
+              ＋ Agregar
+            </button>
+          </div>
+
+          {cargUsuarios ? (
+            <div className="flex justify-center py-4">
+              <div className="w-5 h-5 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+            </div>
+          ) : usuarios.length === 0 ? (
+            <p className="text-zinc-700 text-xs text-center py-3">Sin usuarios — agregá el primero</p>
+          ) : (
+            usuarios.map(u => (
+              <UsuarioCard
+                key={u.usuario_id}
+                usuario={u}
+                tel={tel}
+                nombreLead={lead?.nombre}
+                onActualizar={actualizarUsuario}
+              />
+            ))
+          )}
+        </div>
+
+        {agregando && (
+          <ModalAgregarUsuario
+            onCrear={crearUsuario}
+            onCerrar={() => setAgregando(false)}
+          />
+        )}
+
+        <div className="h-4" />
+      </div>
+    </div>
+  )
+}
+
+// ── Animación de burbujas ─────────────────────────────────────────
+const FLOAT_CSS = `
+  @keyframes float {
+    0%,100% { transform: translateY(0px); }
+    50%      { transform: translateY(-8px); }
+  }
+  .burbuja-lead { animation: float 3s ease-in-out infinite; }
+`
+
+// ── Panel principal Jarvis ────────────────────────────────────────
+export default function AdminSAU() {
+  const { signOut } = useAuth()
+  const [leads,       setLeads]       = useState([])
+  const [clientes,    setClientes]    = useState([])
+  const [leadAbierto, setLeadAbierto] = useState(null)
+  const [modalCrear,  setModalCrear]  = useState(null)
+  const [clientePanel, setClientePanel] = useState(null) // { empresaId, lead }
+  const [cargando,    setCargando]    = useState(true)
+
+  async function cargar() {
+    setCargando(true)
+    const [{ data: l }, { data: c }] = await Promise.all([
+      supabase.from('consulta_sau').select('*').order('created_at', { ascending: false }).limit(30),
+      supabase.from('empresa').select('id, nombre_fantasia, modo_simulacion, modulos_activos, creado_en').order('creado_en', { ascending: false }).limit(30),
+    ])
+    setLeads(l || [])
+    setClientes(c || [])
     setCargando(false)
   }
 
   useEffect(() => { cargar() }, [])
 
-  const insights = useMemo(() => generarInsights(clientes, statsMap), [clientes, statsMap])
-
-  const totales = useMemo(() => ({
-    clientes:    clientes.length,
-    activos:     clientes.filter(c => {
-      const d = statsMap[c.id]?.ultima_actividad
-      return d && Math.floor((Date.now() - new Date(d).getTime()) / 86400000) < 7
-    }).length,
-    totalVentas: Object.values(statsMap).reduce((s, x) => s + (x.ventas_mes||0), 0),
-    riesgos:     insights.filter(i => i.tipo === 'riesgo').length,
-  }), [clientes, statsMap, insights])
-
-  const clientesFiltrados = useMemo(() => {
-    if (filtro === 'todos') return clientes
-    return clientes.filter(c => (c.estado_suscripcion || 'gratuito') === filtro)
-  }, [clientes, filtro])
-
-  const clienteSeleccionado = clientes.find(c => c.id === seleccionado)
+  const nuevos = leads.filter(l => l.estado === 'nueva').length
 
   return (
     <div className="min-h-screen bg-zinc-950">
-      <style>{FLOAT_STYLE}</style>
+      <style>{FLOAT_CSS}</style>
 
-      <header className="border-b border-zinc-800/50 px-5 py-4 sticky top-0 z-40 bg-zinc-950/95 backdrop-blur">
-        <div className="max-w-2xl mx-auto flex items-center justify-between">
+      {/* Header */}
+      <header className="sticky top-0 z-40 bg-zinc-950/95 backdrop-blur border-b border-zinc-800/50 px-5 py-4">
+        <div className="max-w-lg mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/logo.png" alt="SAU" className="w-8 h-8 rounded-xl"
-              style={{ filter: 'drop-shadow(0 0 8px rgba(0,200,120,0.4))' }} />
+            <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center">
+              <span className="text-white font-extrabold text-sm">S</span>
+            </div>
             <div>
-              <p className="text-emerald-400 text-[0.6rem] font-bold uppercase tracking-widest">SAU · Sistema Activo</p>
-              <h1 className="text-white font-extrabold leading-none">{saludo()}, Facundo</h1>
+              <p className="text-emerald-400 text-[0.6rem] font-bold uppercase tracking-widest">SAU · Jarvis</p>
+              <p className="text-white font-extrabold leading-none text-sm">{saludo()}, Facundo</p>
             </div>
           </div>
-          <button onClick={signOut} className="text-xs text-zinc-500 bg-zinc-800 px-3 py-1.5 rounded-full font-semibold">Salir</button>
+          <div className="flex items-center gap-2">
+            {nuevos > 0 && (
+              <span className="bg-red-500 text-white text-xs font-black px-2.5 py-1 rounded-full animate-pulse">
+                {nuevos} nuevo{nuevos > 1 ? 's' : ''}
+              </span>
+            )}
+            <button onClick={signOut} className="text-xs text-zinc-600 bg-zinc-800 px-3 py-1.5 rounded-full">Salir</button>
+          </div>
         </div>
       </header>
 
-      <div className="max-w-2xl mx-auto px-4 py-5 grid gap-6">
-
-        {/* Pulso global */}
-        <div className="grid grid-cols-4 gap-2">
-          {[
-            { label: 'Negocios', value: totales.clientes,    color: 'text-white'       },
-            { label: 'Activos',  value: totales.activos,     color: 'text-emerald-400' },
-            { label: 'Ventas',   value: totales.totalVentas, color: 'text-white'       },
-            { label: 'Alertas',  value: totales.riesgos,     color: totales.riesgos > 0 ? 'text-red-400' : 'text-zinc-600' },
-          ].map(m => (
-            <div key={m.label} className="bg-zinc-900 border border-zinc-800 rounded-2xl px-2 py-3 text-center">
-              <p className={`font-extrabold ${m.color} text-xl`}>{m.value}</p>
-              <p className="text-[0.6rem] text-zinc-600 font-semibold uppercase tracking-widest mt-0.5">{m.label}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Consultas de audio */}
-        <Consultas />
-
-        {/* Feed Jarvis */}
-        {!cargando && insights.length > 0 && (
-          <div className="grid gap-2">
-            <p className="text-xs text-zinc-500 font-semibold uppercase tracking-widest">
-              ⚡ Análisis — {insights.length} señales
-            </p>
-            {insights.map((ins, i) => {
-              const est = INSIGHT_ESTILO[ins.tipo] || INSIGHT_ESTILO.info
-              return (
-                <button key={i} onClick={() => setSeleccionado(ins.cid)}
-                  className={`w-full text-left border-l-4 ${est.border} ${est.bg} rounded-r-2xl px-4 py-3 flex items-start gap-3 active:scale-[0.98] transition-all`}>
-                  <span className="text-xl shrink-0 mt-0.5">{ins.emoji}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white text-sm font-bold leading-tight">{ins.titulo}</p>
-                    {ins.sub && <p className="text-zinc-500 text-xs mt-0.5 leading-snug">{ins.sub}</p>}
-                  </div>
-                  <span className={`text-xs font-bold px-2 py-1 rounded-full shrink-0 ${est.badge}`}>{ins.accion}</span>
-                </button>
-              )
-            })}
+      <div className="max-w-lg mx-auto px-4 py-6 grid gap-8">
+        {cargando ? (
+          <div className="flex items-center justify-center py-20">
+            <div className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
           </div>
-        )}
-
-        {/* Burbujas clientes */}
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-xs text-zinc-500 font-semibold uppercase tracking-widest">Tus clientes</p>
-            <div className="flex gap-1">
-              {[['todos','Todos'],['activo','✓'],['atrasado','⚠'],['gratuito','◎']].map(([id, label]) => (
-                <button key={id} onClick={() => setFiltro(id)}
-                  className={`text-xs font-bold px-2.5 py-1 rounded-full transition-all ${
-                    filtro === id ? 'bg-white text-zinc-900' : 'text-zinc-600 hover:text-zinc-400'
-                  }`}>{label}</button>
-              ))}
-            </div>
-          </div>
-
-          {cargando ? (
-            <div className="flex flex-wrap justify-center gap-8 py-8">
-              {[...Array(4)].map((_, i) => (
-                <div key={i} className="flex flex-col items-center gap-2">
-                  <div className="w-20 h-20 rounded-full bg-zinc-800 animate-pulse" />
-                  <div className="w-16 h-2 rounded bg-zinc-800 animate-pulse" />
+        ) : (
+          <>
+            {/* ── Burbujas ── */}
+            <div>
+              <p className="text-xs text-zinc-500 font-semibold uppercase tracking-widest mb-5">
+                🎤 Solicitudes de audio
+              </p>
+              {leads.length === 0 ? (
+                <p className="text-zinc-700 text-sm text-center py-8">Sin solicitudes todavía</p>
+              ) : (
+                <div className="flex flex-wrap justify-center gap-x-6 gap-y-8">
+                  {leads.map((lead, i) => {
+                    const cfg = burbujaConfig(lead.estado)
+                    return (
+                      <button key={lead.id}
+                        onClick={() => setLeadAbierto(lead)}
+                        className="flex flex-col items-center gap-2 active:scale-90 transition-transform">
+                        <div
+                          className={`burbuja-lead w-20 h-20 rounded-full bg-gradient-to-br ${cfg.grad}
+                            shadow-xl ${cfg.glow} ring-2 ${cfg.ring} ring-offset-2 ring-offset-zinc-950
+                            flex items-center justify-center relative`}
+                          style={{ animationDelay: `${i * 0.4}s` }}>
+                          <span className="text-white font-black text-xl drop-shadow">{iniciales(lead.nombre)}</span>
+                          <span className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-zinc-950 border-2 border-zinc-800 flex items-center justify-center text-xs font-black text-white">
+                            {cfg.label}
+                          </span>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-zinc-300 text-xs font-semibold max-w-[80px] truncate">{lead.nombre || 'Anónimo'}</p>
+                          <p className="text-zinc-600 text-[0.6rem]">
+                            {lead.estado === 'nueva'     ? 'Sin ver'    :
+                             lead.estado === 'en_proceso' ? 'Respondido' :
+                             lead.estado === 'confirmado' ? 'Confirmado' :
+                             lead.estado === 'resuelta'   ? 'Cliente ✓'  : 'Descartado'}
+                          </p>
+                        </div>
+                      </button>
+                    )
+                  })}
                 </div>
-              ))}
+              )}
             </div>
-          ) : clientesFiltrados.length === 0 ? (
-            <div className="text-center py-12 text-zinc-700">
-              <p className="text-4xl mb-2">🔍</p>
-              <p className="text-sm">No hay clientes en esta categoría</p>
-            </div>
-          ) : (
-            <div className="flex flex-wrap justify-center gap-x-6 gap-y-8 py-2">
-              {clientesFiltrados.map((c, i) => (
-                <Burbuja key={c.id} cliente={c} stats={statsMap[c.id]} index={i}
-                  onClick={() => setSeleccionado(c.id)} />
-              ))}
-            </div>
-          )}
-        </div>
 
+            {/* ── Clientes activos ── */}
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-xs text-zinc-500 font-semibold uppercase tracking-widest">👥 Clientes activos</p>
+                <button
+                  onClick={() => setModalCrear({ nombre: '', telefono: '', analisis: null, id: null })}
+                  className="text-xs font-bold text-indigo-400 bg-indigo-500/10 px-3 py-1.5 rounded-full border border-indigo-500/20 active:scale-95 transition-all">
+                  ＋ Nuevo cliente
+                </button>
+              </div>
+              {clientes.length === 0 ? (
+                <p className="text-zinc-700 text-sm text-center py-6">Sin clientes todavía</p>
+              ) : (
+                <div className="grid gap-2">
+                  {clientes.map(c => (
+                    <button key={c.id}
+                      onClick={() => setClientePanel({ empresaId: c.id, lead: null })}
+                      className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 flex items-center gap-3 w-full text-left active:scale-[0.99] transition-all">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center text-white font-extrabold text-sm shrink-0">
+                        {iniciales(c.nombre_fantasia)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white font-bold text-sm truncate">{c.nombre_fantasia}</p>
+                        <p className="text-zinc-600 text-xs">{c.modulos_activos?.length || 0} módulos</p>
+                      </div>
+                      {c.modo_simulacion && (
+                        <span className="text-amber-400 text-[0.6rem] font-bold bg-amber-500/10 px-2 py-0.5 rounded-full">PRÁCTICA</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
-      {clienteSeleccionado && (
-        <DetalleCliente
-          cliente={clienteSeleccionado}
-          stats={statsMap[clienteSeleccionado.id]}
-          onCerrar={() => setSeleccionado(null)}
-          onActualizado={() => { setSeleccionado(null); cargar() }}
+      {/* Modal: detalle del lead */}
+      {leadAbierto && (
+        <ModalLead
+          lead={leadAbierto}
+          onCerrar={() => setLeadAbierto(null)}
+          onActualizado={() => {
+            cargar()
+            // Refrescar el lead abierto con datos frescos
+            supabase.from('consulta_sau').select('*').eq('id', leadAbierto.id).single()
+              .then(({ data }) => { if (data) setLeadAbierto(data) })
+          }}
+          onAutorizar={(lead) => setModalCrear(lead)}
+          onVerCliente={(empresaId, lead) => setClientePanel({ empresaId, lead })}
+        />
+      )}
+
+      {/* Modal: crear cliente */}
+      {modalCrear && (
+        <ModalCrearCliente
+          lead={modalCrear}
+          onCerrar={() => setModalCrear(null)}
+          onCreado={() => { setModalCrear(null); cargar() }}
+          onConfigurar={(empresaId, lead) => {
+            setModalCrear(null)
+            setLeadAbierto(null)
+            setClientePanel({ empresaId, lead })
+            cargar()
+          }}
+        />
+      )}
+
+      {/* Panel: perfil del cliente */}
+      {clientePanel && (
+        <ClientePanel
+          empresaId={clientePanel.empresaId}
+          lead={clientePanel.lead}
+          onCerrar={() => { setClientePanel(null); cargar() }}
         />
       )}
     </div>

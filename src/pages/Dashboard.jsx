@@ -112,10 +112,72 @@ function ModalActivar({ onConfirmar, onCerrar, activando }) {
   )
 }
 
+// ── Home por módulos (empresas sin ventas, ej: solo fiado) ────────
+const MODULO_CARD = {
+  fiado:        { to: '/fiado',        icon: '📒', titulo: 'Fiado',        desc: 'Quién te debe y cuánto' },
+  presupuestos: { to: '/presupuestos', icon: '📄', titulo: 'Presupuestos', desc: 'Armá y enviá presupuestos' },
+  caja:         { to: '/caja',         icon: '💵', titulo: 'Caja',         desc: 'Ingresos y egresos del día' },
+  stock:        { to: '/stock',        icon: '📦', titulo: 'Stock',        desc: 'Inventario y precios' },
+  compras:      { to: '/compras',      icon: '🛍️', titulo: 'Compras',     desc: 'Compras y gastos' },
+  equipo:       { to: '/equipo',       icon: '👥', titulo: 'Equipo',       desc: 'Empleados y permisos' },
+}
+
+function HomeModulos({ empresa, modulos }) {
+  const navigate = useNavigate()
+  const cards = modulos
+    .filter(m => m !== 'ventas' && MODULO_CARD[m])
+    .map(m => MODULO_CARD[m])
+
+  // El módulo principal (el primero) va destacado
+  const [principal, ...resto] = cards
+
+  return (
+    <div className="grid gap-4 pb-2 pt-2">
+
+      {cards.length === 0 ? (
+        <div className="text-center py-16 text-zinc-500">
+          <p className="text-5xl mb-3">🧩</p>
+          <p className="font-medium text-zinc-300">Todavía no hay módulos activos.</p>
+          <p className="text-sm mt-1 text-zinc-600">Avisale a SAU para activarlos.</p>
+        </div>
+      ) : (
+        <>
+          {/* Módulo principal — botón grande */}
+          {principal && (
+            <button onClick={() => navigate(principal.to)}
+              className="w-full bg-gradient-to-br from-emerald-500 to-emerald-600 text-white rounded-3xl p-7 text-center active:scale-[0.98] transition-all shadow-xl shadow-emerald-900/40 flex flex-col items-center"
+            >
+              <span className="text-5xl">{principal.icon}</span>
+              <p className="text-2xl font-extrabold mt-4">{principal.titulo}</p>
+              <p className="text-emerald-50/90 text-sm mt-1">{principal.desc}</p>
+              <span className="mt-5 bg-white/15 text-white text-sm font-bold px-5 py-2 rounded-full">Abrir →</span>
+            </button>
+          )}
+
+          {/* Resto de módulos */}
+          {resto.length > 0 && (
+            <div className="grid grid-cols-2 gap-3">
+              {resto.map(c => (
+                <button key={c.to} onClick={() => navigate(c.to)}
+                  className="bg-zinc-900 text-zinc-200 border border-zinc-800 rounded-3xl py-7 font-bold active:scale-95 transition-all flex flex-col items-center gap-2"
+                >
+                  <span className="text-3xl">{c.icon}</span>
+                  <span className="text-sm">{c.titulo}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 // ── Dashboard ─────────────────────────────────────────────────────
 export default function Dashboard() {
-  const { empresaActivaId, empresaActiva, tienePermiso } = useAuth()
+  const { empresaActivaId, empresaActiva, tienePermiso, tieneModulo, modulosActivos } = useAuth()
   const navigate = useNavigate()
+  const tieneVentas = tieneModulo('ventas')
   const [periodo, setPeriodo]         = useState('hoy')
   const [datos, setDatos]             = useState(null)
   const [cargando, setCargando]       = useState(true)
@@ -125,7 +187,7 @@ export default function Dashboard() {
   const esPractica = empresaActiva?.modo_simulacion ?? false
 
   useEffect(() => {
-    if (!empresaActivaId) { setCargando(false); return }
+    if (!empresaActivaId || !tieneVentas) { setCargando(false); return }
     let cancelado = false
     ;(async () => {
       setCargando(true)
@@ -167,7 +229,7 @@ export default function Dashboard() {
       setCargando(false)
     })()
     return () => { cancelado = true }
-  }, [empresaActivaId, periodo, esPractica])
+  }, [empresaActivaId, periodo, esPractica, tieneVentas])
 
   const metricas = useMemo(() => {
     if (!datos) return null
@@ -245,6 +307,11 @@ export default function Dashboard() {
         <p className="font-medium">No estás asignado a ninguna empresa.</p>
       </div>
     )
+  }
+
+  // Empresa sin módulo de ventas (ej: solo fiado) → home por módulos
+  if (!tieneVentas) {
+    return <HomeModulos empresa={empresaActiva} modulos={modulosActivos} />
   }
 
   const V = metricas?.ventas ?? 0

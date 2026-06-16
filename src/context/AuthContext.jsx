@@ -91,6 +91,17 @@ export function AuthProvider({ children }) {
     [modulosActivos],
   )
 
+  // Recarga los datos de la empresa activa (usado después del onboarding)
+  const recargarEmpresa = useCallback(async () => {
+    if (!session?.user) return
+    const { data: mems } = await supabase
+      .from('membresia')
+      .select('id, rol, permisos, empresa_id, empresa:empresa_id(*)')
+      .eq('usuario_id', session.user.id)
+      .eq('activa', true)
+    if (mems) setMembresias(mems)
+  }, [session])
+
   const value = {
     isSupabaseConfigured,
     session,
@@ -109,6 +120,7 @@ export function AuthProvider({ children }) {
     perfilCargado,
     signIn,
     signOut,
+    recargarEmpresa,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

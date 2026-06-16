@@ -16,10 +16,10 @@ function estadoSaldo(saldo, limite) {
 }
 
 const ESTADO = {
-  dia:    { texto: 'Al día',          bg: 'bg-emerald-500', anillo: 'ring-emerald-400', badge: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
-  debe:   { texto: 'Con deuda',       bg: 'bg-red-500',     anillo: 'ring-red-400',     badge: 'bg-red-50 text-red-600 border-red-100' },
-  alerta: { texto: 'Cerca del límite',bg: 'bg-amber-400',   anillo: 'ring-amber-400',   badge: 'bg-amber-50 text-amber-700 border-amber-100' },
-  limite: { texto: 'Límite alcanzado',bg: 'bg-red-600',     anillo: 'ring-red-500',     badge: 'bg-red-100 text-red-700 border-red-200' },
+  dia:    { texto: 'Al día',           bg: 'bg-emerald-500', badge: 'bg-emerald-500/15 text-emerald-400' },
+  debe:   { texto: 'Con deuda',        bg: 'bg-red-500',     badge: 'bg-red-500/15 text-red-400' },
+  alerta: { texto: 'Cerca del límite', bg: 'bg-orange-400',  badge: 'bg-orange-500/15 text-orange-400' },
+  limite: { texto: 'Límite alcanzado', bg: 'bg-red-600',     badge: 'bg-red-500/20 text-red-300' },
 }
 
 // ── Modal Nuevo / Editar cliente ──────────────────────────────────
@@ -59,65 +59,63 @@ function ModalCliente({ cliente, empresaId, esPractica, onGuardado, onCerrar }) 
     onGuardado()
   }
 
+  const campo = 'bg-zinc-800 rounded-2xl px-4 py-3'
+  const labelCls = 'text-[0.65rem] text-zinc-500 font-bold uppercase tracking-widest mb-1'
+
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center">
-      <div className="bg-white w-full max-w-[500px] rounded-t-[2rem] shadow-2xl">
-        <div className="px-5 pt-5 pb-4 border-b border-slate-100 flex items-center justify-between rounded-t-[2rem]">
-          <h2 className="font-extrabold text-slate-800">
-            {esEdicion ? 'Editar cliente' : 'Nuevo cliente de fiado'}
-          </h2>
-          <button onClick={onCerrar} className="text-slate-400 text-2xl w-10 h-10 flex items-center justify-center rounded-full hover:bg-slate-100">×</button>
+    <div onClick={onCerrar} className="fixed inset-0 bg-black/70 z-[70] flex items-end justify-center">
+      <div onClick={e => e.stopPropagation()}
+        className="bg-zinc-900 border-t border-zinc-800 w-full max-w-[500px] rounded-t-[2rem] shadow-2xl max-h-[92vh] overflow-y-auto">
+
+        <div className="pt-3 pb-1 flex justify-center"><div className="w-10 h-1.5 bg-zinc-700 rounded-full" /></div>
+
+        <div className="px-6 pt-2 pb-4 text-center relative">
+          <h2 className="font-extrabold text-white text-lg">{esEdicion ? 'Editar cliente' : 'Nuevo cliente'}</h2>
+          <p className="text-zinc-500 text-xs mt-0.5">Completá los datos del cliente</p>
+          <button onClick={onCerrar}
+            className="absolute right-5 top-1 text-zinc-500 text-2xl w-9 h-9 flex items-center justify-center rounded-full hover:bg-zinc-800">×</button>
         </div>
-        <div className="px-5 py-4 grid gap-3">
 
-          <div className="bg-slate-50 rounded-2xl px-4 py-3">
-            <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest mb-1">Nombre o apodo *</p>
+        <div className="px-5 grid gap-3">
+          <div className={campo}>
+            <p className={labelCls}>Nombre o apodo *</p>
             <input type="text" value={nombre} onChange={e => setNombre(e.target.value)} autoFocus
-              placeholder="Ej: La Rusa, Pepito, Ramón..."
-              className="w-full text-lg font-bold text-slate-800 outline-none bg-transparent placeholder:text-slate-300"
-            />
+              placeholder="La Rusa, Pepito, Ramón…"
+              className="w-full text-base font-bold text-white outline-none bg-transparent placeholder:text-zinc-600 placeholder:font-normal" />
           </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-slate-50 rounded-2xl px-4 py-3">
-              <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest mb-1">Teléfono</p>
-              <input type="tel" inputMode="numeric" value={telefono} onChange={e => setTelefono(e.target.value)}
-                placeholder="11 1234-5678"
-                className="w-full text-sm font-bold text-slate-700 outline-none bg-transparent placeholder:text-slate-300"
-              />
-            </div>
-            <div className="bg-slate-50 rounded-2xl px-4 py-3">
-              <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest mb-1">Límite de fiado</p>
-              <div className="flex items-center gap-1">
-                <span className="text-slate-300 font-bold text-sm">$</span>
-                <input type="number" inputMode="decimal" value={limite} onChange={e => setLimite(e.target.value)}
-                  placeholder="Sin límite"
-                  className="w-full text-sm font-bold text-slate-700 outline-none bg-transparent placeholder:text-slate-300"
-                />
-              </div>
+          <div className={campo}>
+            <p className={labelCls}>Teléfono</p>
+            <input type="tel" inputMode="numeric" value={telefono} onChange={e => setTelefono(e.target.value)}
+              placeholder="11 1234-5678"
+              className="w-full text-base font-bold text-zinc-200 outline-none bg-transparent placeholder:text-zinc-600 placeholder:font-normal" />
+          </div>
+          <div className={campo}>
+            <p className={labelCls}>Límite de fiado</p>
+            <div className="flex items-center gap-1">
+              <span className="text-zinc-500 font-bold text-base">$</span>
+              <input type="number" inputMode="decimal" value={limite} onChange={e => setLimite(e.target.value)}
+                placeholder="Sin límite"
+                className="w-full text-base font-bold text-zinc-200 outline-none bg-transparent placeholder:text-zinc-600 placeholder:font-normal" />
             </div>
           </div>
-
-          <div className="bg-slate-50 rounded-2xl px-4 py-3">
-            <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest mb-1">Nota</p>
+          <div className={campo}>
+            <p className={labelCls}>Nota</p>
             <input type="text" value={nota} onChange={e => setNota(e.target.value)}
-              placeholder="Ej: Vecina del 4to, viene los sábados..."
-              className="w-full text-sm text-slate-600 outline-none bg-transparent placeholder:text-slate-300"
-            />
+              placeholder="Vecina del 4to, viene los sábados…"
+              className="w-full text-base text-zinc-300 outline-none bg-transparent placeholder:text-zinc-600" />
           </div>
 
-          {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+          {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+        </div>
 
-          <div className="grid grid-cols-2 gap-3 pb-2">
-            <button onClick={onCerrar} className="py-4 rounded-3xl bg-slate-100 text-slate-600 font-bold active:scale-95 transition-all">
-              Cancelar
-            </button>
-            <button onClick={guardar} disabled={guardando}
-              className="py-4 rounded-3xl bg-slate-900 text-white font-extrabold active:scale-95 transition-all disabled:opacity-50"
-            >
-              {guardando ? 'Guardando…' : esEdicion ? 'Guardar' : 'Agregar cliente'}
-            </button>
-          </div>
+        <div className="px-5 pt-4 pb-8 grid grid-cols-2 gap-3">
+          <button onClick={onCerrar} className="py-4 rounded-2xl bg-zinc-800 text-zinc-400 font-bold active:scale-95 transition-all">
+            Cancelar
+          </button>
+          <button onClick={guardar} disabled={guardando}
+            className="py-4 rounded-2xl bg-emerald-500 text-white font-extrabold active:scale-95 transition-all disabled:opacity-50">
+            {guardando ? 'Guardando…' : esEdicion ? 'Guardar' : 'Agregar'}
+          </button>
         </div>
       </div>
     </div>
@@ -139,11 +137,8 @@ function ModalMovimiento({ cliente, tipo: tipoInicial, empresaId, esPractica, us
     const num = parseFloat(monto)
     if (!num || num <= 0) return setError('Ingresá un monto válido')
 
-    // Alerta si supera límite
     if (esFiado && limite && (cliente.saldo_actual + num) > limite) {
-      const ok = window.confirm(
-        `⚠️ Este fiado supera el límite de ${formatPesos(limite)}.\n¿Querés fiarlo igual?`
-      )
+      const ok = window.confirm(`⚠️ Este fiado supera el límite de ${formatPesos(limite)}.\n¿Querés fiarlo igual?`)
       if (!ok) return
     }
 
@@ -163,60 +158,51 @@ function ModalMovimiento({ cliente, tipo: tipoInicial, empresaId, esPractica, us
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center">
-      <div className="bg-white w-full max-w-[500px] rounded-t-[2rem] shadow-2xl">
-        <div className="px-5 pt-5 pb-4 border-b border-slate-100 rounded-t-[2rem]">
-          <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest">Registrar movimiento</p>
-          <h2 className="font-extrabold text-slate-800 truncate">{cliente.nombre}</h2>
+    <div onClick={onCerrar} className="fixed inset-0 bg-black/70 z-[70] flex items-end justify-center">
+      <div onClick={e => e.stopPropagation()}
+        className="bg-zinc-900 border-t border-zinc-800 w-full max-w-[500px] rounded-t-[2rem] shadow-2xl max-h-[92vh] overflow-y-auto">
+
+        <div className="pt-3 pb-1 flex justify-center"><div className="w-10 h-1.5 bg-zinc-700 rounded-full" /></div>
+
+        <div className="px-6 pt-2 pb-4 text-center relative">
+          <p className="text-[0.65rem] text-zinc-500 font-bold uppercase tracking-widest">Registrar movimiento</p>
+          <h2 className="font-extrabold text-white truncate text-lg">{cliente.nombre}</h2>
+          <button onClick={onCerrar}
+            className="absolute right-5 top-1 text-zinc-500 text-2xl w-9 h-9 flex items-center justify-center rounded-full hover:bg-zinc-800">×</button>
         </div>
-        <div className="px-5 py-4 grid gap-4">
+        <div className="px-5 pb-8 grid gap-4">
 
           {/* Tipo */}
           <div className="grid grid-cols-2 gap-2">
             <button onClick={() => setTipo('fiado')}
               className={`py-4 rounded-2xl font-extrabold text-base transition-all active:scale-95 ${
-                tipo === 'fiado'
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-slate-100 text-slate-400'
-              }`}
-            >
+                tipo === 'fiado' ? 'bg-zinc-700 text-white ring-1 ring-zinc-600' : 'bg-zinc-800 text-zinc-500'
+              }`}>
               📝 Le fío
             </button>
             <button onClick={() => setTipo('pago')}
               className={`py-4 rounded-2xl font-extrabold text-base transition-all active:scale-95 ${
-                tipo === 'pago'
-                  ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-100'
-                  : 'bg-slate-100 text-slate-400'
-              }`}
-            >
+                tipo === 'pago' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-900/40' : 'bg-zinc-800 text-zinc-500'
+              }`}>
               💵 Pagó
             </button>
           </div>
 
           {/* Monto */}
-          <div className={`rounded-2xl px-4 py-4 text-center transition-colors ${
-            esFiado ? 'bg-red-50' : 'bg-emerald-50'
-          }`}>
-            <p className={`text-xs font-semibold uppercase tracking-widest mb-2 ${
-              esFiado ? 'text-red-400' : 'text-emerald-500'
-            }`}>
+          <div className={`rounded-2xl px-4 py-4 text-center transition-colors ${esFiado ? 'bg-red-500/10' : 'bg-emerald-500/10'}`}>
+            <p className={`text-xs font-semibold uppercase tracking-widest mb-2 ${esFiado ? 'text-red-400' : 'text-emerald-400'}`}>
               {esFiado ? '¿Cuánto le fiás?' : '¿Cuánto pagó?'}
             </p>
             <div className="flex items-center justify-center gap-2">
-              <span className={`text-2xl font-black ${esFiado ? 'text-red-300' : 'text-emerald-300'}`}>$</span>
-              <input
-                type="number" inputMode="decimal"
-                value={monto} onChange={e => setMonto(e.target.value)}
+              <span className={`text-2xl font-black ${esFiado ? 'text-red-500/50' : 'text-emerald-500/50'}`}>$</span>
+              <input type="number" inputMode="decimal" value={monto} onChange={e => setMonto(e.target.value)}
                 autoFocus placeholder="0"
-                className={`text-5xl font-black outline-none bg-transparent w-40 text-center placeholder:opacity-20 ${
-                  esFiado ? 'text-red-600' : 'text-emerald-600'
-                }`}
-              />
+                className={`text-5xl font-black outline-none bg-transparent w-40 text-center placeholder:opacity-20 ${esFiado ? 'text-red-400' : 'text-emerald-400'}`} />
             </div>
             {limite && esFiado && (
-              <p className="text-xs text-slate-400 mt-2">
-                Saldo actual: <strong className="text-red-500">{formatPesos(cliente.saldo_actual)}</strong>
-                {' '}· Límite: <strong>{formatPesos(limite)}</strong>
+              <p className="text-xs text-zinc-500 mt-2">
+                Saldo actual: <strong className="text-red-400">{formatPesos(cliente.saldo_actual)}</strong>
+                {' '}· Límite: <strong className="text-zinc-300">{formatPesos(limite)}</strong>
               </p>
             )}
           </div>
@@ -224,22 +210,18 @@ function ModalMovimiento({ cliente, tipo: tipoInicial, empresaId, esPractica, us
           {/* Descripción */}
           <input type="text" value={descripcion} onChange={e => setDesc(e.target.value)}
             placeholder={esFiado ? '¿Qué llevó? (opcional)' : 'Nota del pago (opcional)'}
-            className="w-full px-4 py-3 rounded-2xl bg-slate-50 outline-none text-slate-700 placeholder:text-slate-300"
-          />
+            className="w-full px-4 py-3 rounded-2xl bg-zinc-800 outline-none text-zinc-200 placeholder:text-zinc-600" />
 
-          {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+          {error && <p className="text-red-400 text-sm text-center">{error}</p>}
 
           <div className="grid grid-cols-2 gap-3 pb-2">
-            <button onClick={onCerrar} className="py-4 rounded-3xl bg-slate-100 text-slate-600 font-bold active:scale-95 transition-all">
+            <button onClick={onCerrar} className="py-4 rounded-3xl bg-zinc-800 text-zinc-400 font-bold active:scale-95 transition-all">
               Cancelar
             </button>
             <button onClick={guardar} disabled={guardando}
               className={`py-4 rounded-3xl text-white font-extrabold active:scale-95 transition-all disabled:opacity-50 shadow-lg ${
-                esFiado
-                  ? 'bg-slate-900'
-                  : 'bg-emerald-500 shadow-emerald-100'
-              }`}
-            >
+                esFiado ? 'bg-zinc-700' : 'bg-emerald-500 shadow-emerald-900/40'
+              }`}>
               {guardando ? 'Guardando…' : 'Confirmar'}
             </button>
           </div>
@@ -254,7 +236,7 @@ function DetalleCliente({ cliente: clienteInicial, empresaId, esPractica, userId
   const [cliente,    setCliente]    = useState(clienteInicial)
   const [movimientos,setMovimientos]= useState([])
   const [cargando,   setCargando]   = useState(true)
-  const [modalMov,   setModalMov]   = useState(null)  // 'fiado' | 'pago' | null
+  const [modalMov,   setModalMov]   = useState(null)
   const [modalEdit,  setModalEdit]  = useState(false)
 
   async function cargar() {
@@ -278,8 +260,8 @@ function DetalleCliente({ cliente: clienteInicial, empresaId, esPractica, userId
 
   const headerBg = {
     dia:    'bg-emerald-600',
-    debe:   'bg-slate-900',
-    alerta: 'bg-amber-500',
+    debe:   'bg-zinc-800 border border-zinc-700',
+    alerta: 'bg-orange-500',
     limite: 'bg-red-700',
   }[estado]
 
@@ -290,81 +272,56 @@ function DetalleCliente({ cliente: clienteInicial, empresaId, esPractica, userId
   }
 
   if (modalEdit) return (
-    <ModalCliente
-      cliente={cliente}
-      empresaId={empresaId}
-      esPractica={esPractica}
+    <ModalCliente cliente={cliente} empresaId={empresaId} esPractica={esPractica}
       onGuardado={() => { setModalEdit(false); cargar(); onActualizado() }}
-      onCerrar={() => setModalEdit(false)}
-    />
+      onCerrar={() => setModalEdit(false)} />
   )
 
   if (modalMov) return (
-    <ModalMovimiento
-      cliente={cliente}
-      tipo={modalMov}
-      empresaId={empresaId}
-      esPractica={esPractica}
-      userId={userId}
-      onGuardado={handleMovGuardado}
-      onCerrar={() => setModalMov(null)}
-    />
+    <ModalMovimiento cliente={cliente} tipo={modalMov} empresaId={empresaId} esPractica={esPractica} userId={userId}
+      onGuardado={handleMovGuardado} onCerrar={() => setModalMov(null)} />
   )
 
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-4 pt-1">
 
       {/* Header del cliente */}
       <div className={`${headerBg} text-white rounded-3xl p-5 shadow-lg`}>
-        <button onClick={onVolver} className="text-xs font-bold bg-white/20 px-3 py-1.5 rounded-full mb-4">
+        <button onClick={onVolver} className="text-xs font-bold bg-white/15 px-3 py-1.5 rounded-full mb-4">
           ← Volver
         </button>
 
         <div className="flex items-center gap-4 mb-4">
-          <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center text-xl font-extrabold shrink-0">
+          <div className="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center text-xl font-extrabold shrink-0">
             {iniciales(cliente.nombre)}
           </div>
           <div className="flex-1 min-w-0">
             <h2 className="text-xl font-extrabold leading-tight truncate">{cliente.nombre}</h2>
             {cliente.telefono && (
-              <a href={`tel:${cliente.telefono}`} className="text-white/70 text-sm font-medium">
-                📱 {cliente.telefono}
-              </a>
+              <a href={`tel:${cliente.telefono}`} className="text-white/70 text-sm font-medium">📱 {cliente.telefono}</a>
             )}
           </div>
           <button onClick={() => setModalEdit(true)}
-            className="text-xs font-bold bg-white/20 px-3 py-1.5 rounded-full shrink-0"
-          >
-            Editar
-          </button>
+            className="text-xs font-bold bg-white/15 px-3 py-1.5 rounded-full shrink-0">Editar</button>
         </div>
 
-        {/* Saldo protagonista */}
         <div className="text-center mb-3">
           <p className="text-xs text-white/60 font-semibold uppercase tracking-widest mb-1">
             {cliente.saldo_actual > 0 ? 'Saldo pendiente' : 'Estado'}
           </p>
-          <p className="font-black leading-none"
-            style={{ fontSize: 'clamp(2.5rem, 12vw, 3.5rem)' }}
-          >
+          <p className="font-black leading-none" style={{ fontSize: 'clamp(2.5rem, 12vw, 3.5rem)' }}>
             {cliente.saldo_actual > 0
               ? formatPesos(cliente.saldo_actual)
               : cliente.saldo_actual < 0
               ? `A favor ${formatPesos(Math.abs(cliente.saldo_actual))}`
-              : '✓ Al día'
-            }
+              : '✓ Al día'}
           </p>
         </div>
 
-        {/* Badge + límite */}
         <div className="flex items-center justify-center gap-3">
-          <span className={`text-xs font-bold px-3 py-1 rounded-full border ${est.badge}`}>
-            {est.texto}
-          </span>
+          <span className={`text-xs font-bold px-3 py-1 rounded-full ${est.badge}`}>{est.texto}</span>
           {cliente.limite_fiado && (
-            <span className="text-xs text-white/60">
-              Límite: {formatPesos(cliente.limite_fiado)}
-            </span>
+            <span className="text-xs text-white/60">Límite: {formatPesos(cliente.limite_fiado)}</span>
           )}
         </div>
 
@@ -376,41 +333,35 @@ function DetalleCliente({ cliente: clienteInicial, empresaId, esPractica, userId
       {/* Botones acción */}
       <div className="grid grid-cols-2 gap-3">
         <button onClick={() => setModalMov('fiado')}
-          className="py-5 rounded-3xl bg-slate-900 text-white font-extrabold text-base active:scale-95 transition-all shadow-lg"
-        >
+          className="py-5 rounded-3xl bg-zinc-800 border border-zinc-700 text-white font-extrabold text-base active:scale-95 transition-all">
           📝 Le fío algo
         </button>
         <button onClick={() => setModalMov('pago')}
-          className="py-5 rounded-3xl bg-emerald-500 text-white font-extrabold text-base active:scale-95 transition-all shadow-lg shadow-emerald-100"
-        >
+          className="py-5 rounded-3xl bg-emerald-500 text-white font-extrabold text-base active:scale-95 transition-all shadow-lg shadow-emerald-900/40">
           💵 Pagó
         </button>
       </div>
 
       {/* Historial */}
       <div>
-        <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest mb-3">
-          Historial
-        </p>
-        {cargando && <p className="text-slate-400 text-sm text-center py-6">Cargando…</p>}
+        <p className="text-zinc-500 text-xs font-semibold uppercase tracking-widest mb-3">Historial</p>
+        {cargando && <p className="text-zinc-500 text-sm text-center py-6">Cargando…</p>}
         {!cargando && movimientos.length === 0 && (
-          <p className="text-slate-400 text-sm text-center py-6">Sin movimientos todavía</p>
+          <p className="text-zinc-500 text-sm text-center py-6">Sin movimientos todavía</p>
         )}
         <div className="grid gap-2">
           {movimientos.map(m => {
             const esFiado = m.tipo === 'fiado'
             return (
-              <div key={m.id} className={`flex items-center gap-3 px-4 py-3 rounded-2xl ${
-                esFiado ? 'bg-red-50' : 'bg-emerald-50'
-              }`}>
+              <div key={m.id} className={`flex items-center gap-3 px-4 py-3 rounded-2xl ${esFiado ? 'bg-red-500/10' : 'bg-emerald-500/10'}`}>
                 <span className="text-xl">{esFiado ? '🛒' : '💵'}</span>
                 <div className="flex-1 min-w-0">
-                  <p className={`text-sm font-bold ${esFiado ? 'text-red-700' : 'text-emerald-700'}`}>
+                  <p className={`text-sm font-bold ${esFiado ? 'text-red-400' : 'text-emerald-400'}`}>
                     {m.descripcion || (esFiado ? 'Fiado' : 'Pago')}
                   </p>
-                  <p className="text-xs text-slate-400">{formatFecha(m.created_at?.slice(0,10))}</p>
+                  <p className="text-xs text-zinc-500">{formatFecha(m.created_at?.slice(0,10))}</p>
                 </div>
-                <p className={`text-base font-extrabold ${esFiado ? 'text-red-600' : 'text-emerald-600'}`}>
+                <p className={`text-base font-extrabold ${esFiado ? 'text-red-400' : 'text-emerald-400'}`}>
                   {esFiado ? '+' : '−'}{formatPesos(m.monto)}
                 </p>
               </div>
@@ -463,51 +414,40 @@ export default function Fiado() {
   , [clientes])
 
   const conDeuda = clientes.filter(c => c.saldo_actual > 0).length
-  const enLimite = clientes.filter(c =>
-    c.limite_fiado && c.saldo_actual >= c.limite_fiado
-  ).length
+  const enLimite = clientes.filter(c => c.limite_fiado && c.saldo_actual >= c.limite_fiado).length
 
-  // Si hay un cliente seleccionado, mostramos su detalle
   if (seleccionado) {
     return (
-      <DetalleCliente
-        cliente={seleccionado}
-        empresaId={empresaActivaId}
-        esPractica={esPractica}
-        userId={user?.id}
-        onVolver={() => setSeleccionado(null)}
-        onActualizado={cargar}
-      />
+      <DetalleCliente cliente={seleccionado} empresaId={empresaActivaId} esPractica={esPractica} userId={user?.id}
+        onVolver={() => setSeleccionado(null)} onActualizado={cargar} />
     )
   }
 
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-4 pt-1">
 
       {/* Header métricas */}
-      <div className="bg-slate-900 text-white rounded-3xl p-5 shadow-lg">
-        <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest mb-1">
-          Total pendiente
-        </p>
-        <p className="font-black mb-4" style={{ fontSize: 'clamp(2.5rem, 12vw, 3.5rem)' }}>
+      <div className="bg-zinc-900 border border-zinc-800 text-white rounded-3xl p-5">
+        <p className="text-xs text-zinc-500 font-semibold uppercase tracking-widest mb-1">Total pendiente</p>
+        <p className="font-black mb-4 text-emerald-400" style={{ fontSize: 'clamp(2.5rem, 12vw, 3.5rem)' }}>
           {formatPesos(totalPendiente)}
         </p>
         <div className="flex gap-4">
           <div>
             <p className="text-2xl font-extrabold">{conDeuda}</p>
-            <p className="text-xs text-slate-400">con deuda</p>
+            <p className="text-xs text-zinc-500">con deuda</p>
           </div>
-          <div className="w-px bg-slate-700" />
+          <div className="w-px bg-zinc-700" />
           <div>
             <p className="text-2xl font-extrabold">{clientes.length}</p>
-            <p className="text-xs text-slate-400">clientes</p>
+            <p className="text-xs text-zinc-500">clientes</p>
           </div>
           {enLimite > 0 && (
             <>
-              <div className="w-px bg-slate-700" />
+              <div className="w-px bg-zinc-700" />
               <div>
-                <p className="text-2xl font-extrabold text-red-400">{enLimite}</p>
-                <p className="text-xs text-red-400">en límite</p>
+                <p className="text-2xl font-extrabold text-orange-400">{enLimite}</p>
+                <p className="text-xs text-orange-400">en límite</p>
               </div>
             </>
           )}
@@ -515,16 +455,10 @@ export default function Fiado() {
       </div>
 
       {/* Buscador */}
-      <input
-        type="text"
-        placeholder="Buscar por nombre o teléfono…"
-        value={busqueda}
-        onChange={e => setBusqueda(e.target.value)}
-        className="w-full px-4 py-3 rounded-2xl bg-white shadow-sm outline-none text-slate-700 placeholder:text-slate-300"
-      />
+      <input type="text" placeholder="Buscar por nombre o teléfono…" value={busqueda} onChange={e => setBusqueda(e.target.value)}
+        className="w-full px-4 py-3 rounded-2xl bg-zinc-900 border border-zinc-800 outline-none text-zinc-200 placeholder:text-zinc-600" />
 
-      {/* Lista clientes */}
-      {cargando && <p className="text-center text-slate-400 py-8 text-sm">Cargando…</p>}
+      {cargando && <p className="text-center text-zinc-500 py-8 text-sm">Cargando…</p>}
 
       <div className="grid gap-2">
         {clientesFiltrados.map(c => {
@@ -532,15 +466,14 @@ export default function Fiado() {
           const est    = ESTADO[estado]
           return (
             <button key={c.id} onClick={() => setSeleccionado(c)}
-              className="bg-white rounded-3xl p-4 shadow-sm text-left w-full active:scale-[0.98] transition-all"
-            >
+              className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 text-left w-full active:scale-[0.98] transition-all">
               <div className="flex items-center gap-3">
                 <div className={`w-11 h-11 rounded-xl flex items-center justify-center font-extrabold text-sm text-white shrink-0 ${est.bg}`}>
                   {iniciales(c.nombre)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-bold text-slate-800 truncate">{c.nombre}</p>
-                  <p className="text-xs text-slate-400">
+                  <p className="font-bold text-white truncate">{c.nombre}</p>
+                  <p className="text-xs text-zinc-500">
                     {c.telefono || 'Sin teléfono'}
                     {c.limite_fiado && ` · Límite ${formatPesos(c.limite_fiado)}`}
                   </p>
@@ -548,26 +481,26 @@ export default function Fiado() {
                 <div className="text-right shrink-0">
                   {c.saldo_actual > 0 ? (
                     <>
-                      <p className="text-base font-extrabold text-red-600">{formatPesos(c.saldo_actual)}</p>
-                      <p className="text-xs text-red-400">debe</p>
+                      <p className="text-base font-extrabold text-red-400">{formatPesos(c.saldo_actual)}</p>
+                      <p className="text-xs text-red-400/70">debe</p>
                     </>
                   ) : c.saldo_actual < 0 ? (
                     <>
-                      <p className="text-base font-extrabold text-emerald-600">{formatPesos(Math.abs(c.saldo_actual))}</p>
-                      <p className="text-xs text-emerald-500">a favor</p>
+                      <p className="text-base font-extrabold text-emerald-400">{formatPesos(Math.abs(c.saldo_actual))}</p>
+                      <p className="text-xs text-emerald-400/70">a favor</p>
                     </>
                   ) : (
-                    <span className="text-emerald-500 font-bold text-sm">✓ Al día</span>
+                    <span className="text-emerald-400 font-bold text-sm">✓ Al día</span>
                   )}
                 </div>
               </div>
               {estado === 'limite' && (
-                <div className="mt-2 text-xs font-bold text-red-500 bg-red-50 rounded-xl px-3 py-1.5 text-center">
+                <div className="mt-2 text-xs font-bold text-red-400 bg-red-500/10 rounded-xl px-3 py-1.5 text-center">
                   ⚠️ Límite de fiado alcanzado
                 </div>
               )}
               {estado === 'alerta' && (
-                <div className="mt-2 text-xs font-bold text-amber-600 bg-amber-50 rounded-xl px-3 py-1.5 text-center">
+                <div className="mt-2 text-xs font-bold text-orange-400 bg-orange-500/10 rounded-xl px-3 py-1.5 text-center">
                   Cerca del límite
                 </div>
               )}
@@ -577,34 +510,25 @@ export default function Fiado() {
       </div>
 
       {!cargando && clientesFiltrados.length === 0 && (
-        <div className="text-center py-12 text-slate-400">
-          <p className="text-4xl mb-3">📒</p>
-          <p className="font-medium">
+        <div className="text-center py-12 text-zinc-500">
+          <p className="text-5xl mb-3">📒</p>
+          <p className="font-medium text-zinc-300">
             {busqueda ? 'No encontramos ese cliente' : 'Todavía no hay clientes de fiado'}
           </p>
-          {!busqueda && (
-            <p className="text-sm mt-1 text-slate-300">
-              Agregá al primero con el botón de abajo
-            </p>
-          )}
+          {!busqueda && <p className="text-sm mt-1 text-zinc-600">Agregá al primero con el botón de abajo</p>}
         </div>
       )}
 
       {/* Botón nuevo cliente */}
       <button onClick={() => setModalNuevo(true)}
-        className="w-full py-5 rounded-full bg-slate-900 text-white font-extrabold text-base active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg"
-      >
+        className="w-full py-5 rounded-full bg-emerald-500 text-white font-extrabold text-base active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/40">
         + Nuevo cliente
       </button>
 
-      {/* Modal */}
       {modalNuevo && (
-        <ModalCliente
-          empresaId={empresaActivaId}
-          esPractica={esPractica}
+        <ModalCliente empresaId={empresaActivaId} esPractica={esPractica}
           onGuardado={() => { setModalNuevo(false); cargar() }}
-          onCerrar={() => setModalNuevo(false)}
-        />
+          onCerrar={() => setModalNuevo(false)} />
       )}
 
     </div>
