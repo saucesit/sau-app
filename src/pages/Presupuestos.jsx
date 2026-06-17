@@ -47,7 +47,7 @@ export default function Presupuestos() {
     setCargando(true)
     const [{ data: pres }, { data: peds }] = await Promise.all([
       supabase.from('presupuesto')
-        .select('id, numero, cliente_nombre, total, estado, aprobado, enviado, created_at')
+        .select('id, numero, cliente_nombre, titulo, total, estado, aprobado, enviado, created_at')
         .eq('empresa_id', empresaActivaId)
         .order('created_at', { ascending: false }),
       supabase.from('pedido')
@@ -120,10 +120,13 @@ export default function Presupuestos() {
               const e = estadoEmpleado(p)
               return (
                 <button key={p.id} onClick={() => navigate(`/presupuestos/${p.id}`)}
-                  className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 grid gap-3 text-left w-full active:scale-[0.99] transition-all">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-white font-bold text-base truncate">{p.cliente_nombre}</p>
-                    <span className="text-zinc-600 text-xs shrink-0">{formatFecha(p.created_at)}</span>
+                  className="bg-zinc-900 border border-zinc-700 rounded-2xl p-4 grid gap-3 text-left w-full active:scale-[0.99] transition-all">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-white font-bold text-base truncate">{p.cliente_nombre}</p>
+                      {p.titulo && <p className="text-zinc-500 text-sm truncate mt-0.5">{p.titulo}</p>}
+                    </div>
+                    <span className="text-zinc-600 text-xs shrink-0 mt-0.5">{formatFecha(p.created_at)}</span>
                   </div>
                   <div className={`text-sm font-bold py-2.5 rounded-xl text-center ${e.cls}`}>{e.txt}</div>
                 </button>
