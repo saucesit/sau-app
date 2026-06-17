@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { MODULOS } from '../lib/modulos'
 
-const BASE_URL = 'https://kiosco-carlitos.vercel.app'
+const BASE_URL = 'https://sau-app.vercel.app'
 
 // ── Audio helpers ─────────────────────────────────────────────────
 function getMimeType() {
@@ -897,13 +897,16 @@ function ClientePanel({ empresaId, lead, onCerrar }) {
   const [razon,        setRazon]        = useState('')
   const [guardRazon,   setGuardRazon]   = useState(false)
   const [razonOk,      setRazonOk]      = useState(false)
+  const [abono,        setAbono]        = useState('')
+  const [guardAbono,   setGuardAbono]   = useState(false)
+  const [abonoOk,      setAbonoOk]      = useState(false)
 
   useEffect(() => { cargarEmpresa(); cargarUsuarios(); cargarActividad() }, [empresaId])
 
   async function cargarEmpresa() {
     setCargando(true)
     const { data } = await supabase.from('empresa').select('*').eq('id', empresaId).single()
-    if (data) { setEmpresa(data); setNota(data.notas_admin || ''); setRazon(data.razon_social || '') }
+    if (data) { setEmpresa(data); setNota(data.notas_admin || ''); setRazon(data.razon_social || ''); setAbono(data.abono_mensual ? String(data.abono_mensual) : '') }
     setCargando(false)
   }
 
@@ -913,6 +916,16 @@ function ClientePanel({ empresaId, lead, onCerrar }) {
     setEmpresa(e => ({ ...e, razon_social: razon.trim() }))
     setGuardRazon(false); setRazonOk(true)
     setTimeout(() => setRazonOk(false), 2000)
+  }
+
+  async function guardarAbono() {
+    const monto = parseInt(abono.replace(/\D/g, ''), 10)
+    if (!monto) return
+    setGuardAbono(true)
+    await supabase.from('empresa').update({ abono_mensual: monto }).eq('id', empresa.id)
+    setEmpresa(e => ({ ...e, abono_mensual: monto }))
+    setGuardAbono(false); setAbonoOk(true)
+    setTimeout(() => setAbonoOk(false), 2000)
   }
 
   async function cargarUsuarios() {
@@ -1076,6 +1089,23 @@ function ClientePanel({ empresaId, lead, onCerrar }) {
             <button onClick={guardarRazon} disabled={guardRazon || !razon.trim()}
               className="px-4 rounded-xl bg-emerald-500 text-white text-sm font-bold disabled:opacity-40 active:scale-95">
               {guardRazon ? '...' : 'Guardar'}
+            </button>
+          </div>
+        </div>
+
+        {/* ── Abono mensual ──────────────────────────────────── */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 grid gap-2">
+          <div className="flex items-center justify-between">
+            <p className="text-zinc-500 text-[0.6rem] font-bold uppercase tracking-widest">Abono mensual · en pesos</p>
+            {abonoOk && <span className="text-emerald-400 text-[0.6rem] font-bold">✓ Guardado</span>}
+          </div>
+          <div className="flex gap-2">
+            <input type="text" inputMode="numeric" value={abono} onChange={e => setAbono(e.target.value)}
+              placeholder="Ej: 65000"
+              className="flex-1 bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-emerald-500" />
+            <button onClick={guardarAbono} disabled={guardAbono || !abono.trim()}
+              className="px-4 rounded-xl bg-emerald-500 text-white text-sm font-bold disabled:opacity-40 active:scale-95">
+              {guardAbono ? '...' : 'Guardar'}
             </button>
           </div>
         </div>
@@ -1252,27 +1282,66 @@ const FLOAT_CSS = `
 // ── Panel principal Jarvis ────────────────────────────────────────
 export default function AdminSAU() {
   const { signOut } = useAuth()
-  const [leads,       setLeads]       = useState([])
-  const [clientes,    setClientes]    = useState([])
-  const [leadAbierto, setLeadAbierto] = useState(null)
-  const [modalCrear,  setModalCrear]  = useState(null)
-  const [clientePanel, setClientePanel] = useState(null) // { empresaId, lead }
-  const [cargando,    setCargando]    = useState(true)
+  const [leads,        setLeads]        = useState([])
+  const [clientes,     setClientes]     = useState([])
+  const [pagos,        setPagos]        = useState([])
+  const [leadAbierto,  setLeadAbierto]  = useState(null)
+  const [modalCrear,   setModalCrear]   = useState(null)
+  const [clientePanel, setClientePanel] = useState(null)
+  const [cargando,     setCargando]     = useState(true)
+  const [verArchivo,   setVerArchivo]   = useState(false)
+  const [marcando,     setMarcando]     = useState(null)
+
+  const periodoActual = new Date().toISOString().slice(0, 7)
+  const mesLabel = new Date().toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
+
+  function fmtPesos(n) {
+    return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(n || 0)
+  }
+  function fmtFechaPago(iso) {
+    return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })
+  }
 
   async function cargar() {
     setCargando(true)
-    const [{ data: l }, { data: c }] = await Promise.all([
-      supabase.from('consulta_sau').select('*').order('created_at', { ascending: false }).limit(30),
-      supabase.from('empresa').select('id, nombre_fantasia, modo_simulacion, modulos_activos, creado_en').order('creado_en', { ascending: false }).limit(30),
+    const [{ data: l }, { data: c }, { data: p }] = await Promise.all([
+      supabase.from('consulta_sau').select('*').order('created_at', { ascending: false }).limit(50),
+      supabase.from('empresa').select('id, nombre_fantasia, modo_simulacion, modulos_activos, creado_en, abono_mensual, abono_dia_vencimiento').order('creado_en', { ascending: false }).limit(30),
+      supabase.from('pago_abono').select('*').eq('periodo', periodoActual),
     ])
     setLeads(l || [])
     setClientes(c || [])
+    setPagos(p || [])
     setCargando(false)
   }
 
   useEffect(() => { cargar() }, [])
 
-  const nuevos = leads.filter(l => l.estado === 'nueva').length
+  async function reabrirLead(lead) {
+    await supabase.from('consulta_sau').update({ estado: 'nueva' }).eq('id', lead.id)
+    cargar()
+  }
+
+  async function marcarPagado(empresaId, monto) {
+    setMarcando(empresaId)
+    await supabase.from('pago_abono').upsert({
+      empresa_id: empresaId,
+      periodo:    periodoActual,
+      monto,
+      pagado:     true,
+      fecha_pago: new Date().toISOString(),
+    }, { onConflict: 'empresa_id,periodo' })
+    await cargar()
+    setMarcando(null)
+  }
+
+  const leadsActivos     = leads.filter(l => ['nueva', 'en_proceso', 'confirmado'].includes(l.estado))
+  const leadsDescartados = leads.filter(l => l.estado === 'descartada')
+
+  const clientesConAbono = clientes.filter(c => c.abono_mensual)
+  const totalCobrado     = pagos.filter(p => p.pagado).reduce((s, p) => s + p.monto, 0)
+  const pagaronCount     = pagos.filter(p => p.pagado).length
+  const debenCount       = clientesConAbono.length - pagaronCount
 
   return (
     <div className="min-h-screen bg-zinc-950">
@@ -1290,14 +1359,7 @@ export default function AdminSAU() {
               <p className="text-white font-extrabold leading-none text-sm">{saludo()}, Facundo</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {nuevos > 0 && (
-              <span className="bg-red-500 text-white text-xs font-black px-2.5 py-1 rounded-full animate-pulse">
-                {nuevos} nuevo{nuevos > 1 ? 's' : ''}
-              </span>
-            )}
-            <button onClick={signOut} className="text-xs text-zinc-600 bg-zinc-800 px-3 py-1.5 rounded-full">Salir</button>
-          </div>
+          <button onClick={signOut} className="text-xs text-zinc-600 bg-zinc-800 px-3 py-1.5 rounded-full">Salir</button>
         </div>
       </header>
 
@@ -1308,16 +1370,22 @@ export default function AdminSAU() {
           </div>
         ) : (
           <>
-            {/* ── Burbujas ── */}
+            {/* ── SECCIÓN 1: Solicitudes de audio ── */}
             <div>
-              <p className="text-xs text-zinc-500 font-semibold uppercase tracking-widest mb-5">
-                🎤 Solicitudes de audio
-              </p>
-              {leads.length === 0 ? (
-                <p className="text-zinc-700 text-sm text-center py-8">Sin solicitudes todavía</p>
+              <div className="flex items-center gap-2 mb-5">
+                <p className="text-xs text-zinc-500 font-semibold uppercase tracking-widest">🎤 Solicitudes</p>
+                {leadsActivos.filter(l => l.estado === 'nueva').length > 0 && (
+                  <span className="bg-blue-500/15 text-blue-400 text-[0.6rem] font-bold px-2 py-0.5 rounded-full">
+                    {leadsActivos.filter(l => l.estado === 'nueva').length} nuevas
+                  </span>
+                )}
+              </div>
+
+              {leadsActivos.length === 0 ? (
+                <p className="text-zinc-700 text-sm text-center py-6">Sin solicitudes pendientes</p>
               ) : (
-                <div className="flex flex-wrap justify-center gap-x-6 gap-y-8">
-                  {leads.map((lead, i) => {
+                <div className="flex flex-wrap justify-start gap-x-6 gap-y-8">
+                  {leadsActivos.map((lead, i) => {
                     const cfg = burbujaConfig(lead.estado)
                     return (
                       <button key={lead.id}
@@ -1336,10 +1404,7 @@ export default function AdminSAU() {
                         <div className="text-center">
                           <p className="text-zinc-300 text-xs font-semibold max-w-[80px] truncate">{lead.nombre || 'Anónimo'}</p>
                           <p className="text-zinc-600 text-[0.6rem]">
-                            {lead.estado === 'nueva'     ? 'Sin ver'    :
-                             lead.estado === 'en_proceso' ? 'Respondido' :
-                             lead.estado === 'confirmado' ? 'Confirmado' :
-                             lead.estado === 'resuelta'   ? 'Cliente ✓'  : 'Descartado'}
+                            {lead.estado === 'nueva' ? 'Sin ver' : lead.estado === 'en_proceso' ? 'Respondido' : 'Confirmado'}
                           </p>
                         </div>
                       </button>
@@ -1347,9 +1412,38 @@ export default function AdminSAU() {
                   })}
                 </div>
               )}
+
+              {leadsDescartados.length > 0 && (
+                <div className="mt-4">
+                  <button onClick={() => setVerArchivo(v => !v)}
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 flex items-center justify-between">
+                    <span className="text-zinc-600 text-xs font-semibold">🗑 Archivo · {leadsDescartados.length} descartados</span>
+                    <span className="text-zinc-700 text-sm">{verArchivo ? '▲' : '▼'}</span>
+                  </button>
+                  {verArchivo && (
+                    <div className="mt-2 grid gap-2">
+                      {leadsDescartados.map(lead => (
+                        <div key={lead.id} className="bg-zinc-900/50 border border-zinc-800 rounded-2xl px-4 py-3 flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-500 font-bold text-sm shrink-0">
+                            {iniciales(lead.nombre)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-zinc-500 text-sm font-semibold truncate">{lead.nombre || 'Anónimo'}</p>
+                            <p className="text-zinc-700 text-xs">{new Date(lead.created_at).toLocaleDateString('es-AR')}</p>
+                          </div>
+                          <button onClick={() => reabrirLead(lead)}
+                            className="text-[0.65rem] font-bold text-indigo-400 bg-indigo-500/10 px-3 py-1.5 rounded-full border border-indigo-500/20 shrink-0 active:scale-95">
+                            Reabrir
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            {/* ── Clientes activos ── */}
+            {/* ── SECCIÓN 2: Clientes activos ── */}
             <div>
               <div className="flex items-center justify-between mb-4">
                 <p className="text-xs text-zinc-500 font-semibold uppercase tracking-widest">👥 Clientes activos</p>
@@ -1372,28 +1466,94 @@ export default function AdminSAU() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-white font-bold text-sm truncate">{c.nombre_fantasia}</p>
-                        <p className="text-zinc-600 text-xs">{c.modulos_activos?.length || 0} módulos</p>
+                        <p className="text-zinc-600 text-xs">
+                          {c.modulos_activos?.length || 0} módulos
+                          {c.abono_mensual ? ` · ${fmtPesos(c.abono_mensual)}/mes` : ''}
+                        </p>
                       </div>
                       {c.modo_simulacion && (
                         <span className="text-amber-400 text-[0.6rem] font-bold bg-amber-500/10 px-2 py-0.5 rounded-full">PRÁCTICA</span>
                       )}
+                      <span className="text-zinc-700 text-lg shrink-0">›</span>
                     </button>
                   ))}
                 </div>
               )}
             </div>
+
+            {/* ── SECCIÓN 3: Cobranzas ── */}
+            {clientesConAbono.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-xs text-zinc-500 font-semibold uppercase tracking-widest">💰 Cobranzas · {mesLabel}</p>
+                  {totalCobrado > 0 && (
+                    <span className="text-emerald-400 text-[0.65rem] font-bold bg-emerald-500/10 px-2.5 py-1 rounded-full">
+                      {fmtPesos(totalCobrado)} cobrado
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  {[
+                    { val: clientesConAbono.length, lbl: 'clientes', cls: 'text-white' },
+                    { val: pagaronCount,             lbl: 'pagaron',  cls: 'text-emerald-400' },
+                    { val: debenCount,               lbl: 'deben',    cls: debenCount > 0 ? 'text-red-400' : 'text-zinc-600' },
+                  ].map(s => (
+                    <div key={s.lbl} className="bg-zinc-900 border border-zinc-800 rounded-2xl p-3 text-center">
+                      <p className={`text-2xl font-extrabold ${s.cls}`}>{s.val}</p>
+                      <p className="text-zinc-600 text-[0.65rem] mt-0.5">{s.lbl}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid gap-2">
+                  {clientesConAbono.map(c => {
+                    const pago   = pagos.find(p => p.empresa_id === c.id)
+                    const pagado = pago?.pagado
+                    return (
+                      <div key={c.id}
+                        className={`bg-zinc-900 border rounded-2xl px-4 py-3 flex items-center gap-3 ${
+                          pagado ? 'border-zinc-800' : 'border-red-500/20 bg-red-950/10'
+                        }`}>
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center text-white font-extrabold text-sm shrink-0">
+                          {iniciales(c.nombre_fantasia)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white font-bold text-sm truncate">{c.nombre_fantasia}</p>
+                          <p className="text-zinc-600 text-xs">
+                            {pagado
+                              ? `✓ Pagó el ${fmtFechaPago(pago.fecha_pago)}`
+                              : `Vence día ${c.abono_dia_vencimiento || 5}`}
+                          </p>
+                        </div>
+                        <div className="shrink-0">
+                          {pagado ? (
+                            <p className="text-emerald-400 font-extrabold text-sm">{fmtPesos(pago.monto)}</p>
+                          ) : (
+                            <button
+                              onClick={() => marcarPagado(c.id, c.abono_mensual)}
+                              disabled={marcando === c.id}
+                              className="bg-emerald-500 text-white text-xs font-bold px-3 py-2 rounded-xl active:scale-95 disabled:opacity-50 transition-all">
+                              {marcando === c.id ? '...' : `✓ Cobrar`}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
 
-      {/* Modal: detalle del lead */}
       {leadAbierto && (
         <ModalLead
           lead={leadAbierto}
           onCerrar={() => setLeadAbierto(null)}
           onActualizado={() => {
             cargar()
-            // Refrescar el lead abierto con datos frescos
             supabase.from('consulta_sau').select('*').eq('id', leadAbierto.id).single()
               .then(({ data }) => { if (data) setLeadAbierto(data) })
           }}
@@ -1402,7 +1562,6 @@ export default function AdminSAU() {
         />
       )}
 
-      {/* Modal: crear cliente */}
       {modalCrear && (
         <ModalCrearCliente
           lead={modalCrear}
@@ -1417,7 +1576,6 @@ export default function AdminSAU() {
         />
       )}
 
-      {/* Panel: perfil del cliente */}
       {clientePanel && (
         <ClientePanel
           empresaId={clientePanel.empresaId}
