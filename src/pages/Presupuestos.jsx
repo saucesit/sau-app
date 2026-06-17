@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 
-const BASE_URL = 'https://kiosco-carlitos.vercel.app'
+const BASE_URL = 'https://sau-app.vercel.app'
 
 const ESTADO_CFG = {
   pendiente: { label: 'Pendiente', bg: 'bg-amber-500/15',   text: 'text-amber-400'   },
@@ -30,7 +30,7 @@ function Seccion({ children }) {
 }
 
 export default function Presupuestos() {
-  const { empresaActivaId, tienePermiso } = useAuth()
+  const { empresaActivaId, tienePermiso, profile, empresaActiva } = useAuth()
   const navigate = useNavigate()
   const [presupuestos, setPresupuestos] = useState([])
   const [pedidos,      setPedidos]      = useState([])
@@ -47,7 +47,7 @@ export default function Presupuestos() {
     setCargando(true)
     const [{ data: pres }, { data: peds }] = await Promise.all([
       supabase.from('presupuesto')
-        .select('id, numero, cliente_nombre, total, estado, aprobado, created_at')
+        .select('id, numero, cliente_nombre, total, estado, aprobado, enviado, created_at')
         .eq('empresa_id', empresaActivaId)
         .order('created_at', { ascending: false }),
       supabase.from('pedido')
@@ -76,6 +76,64 @@ export default function Presupuestos() {
   }
 
   const pendientes = aprobados.filter(p => p.estado === 'pendiente').length
+
+  // ── Vista del EMPLEADO (Gonzalo): simple, sin precios ni configuración ──
+  if (!puedeAprobar) {
+    const nombre = profile?.nombre?.split(' ')[0] || ''
+    const prioridad = p => (p.aprobado && !p.enviado) ? 0 : !p.aprobado ? 1 : 2
+    const lista = [...presupuestos].sort((a, b) => prioridad(a) - prioridad(b))
+
+    const estadoEmpleado = p => {
+      if (p.aprobado && !p.enviado) return { txt: '✅ Aprobado — tocá para enviar', cls: 'bg-emerald-500 text-white' }
+      if (!p.aprobado)              return { txt: '⏳ Esperando que Fede apruebe',   cls: 'bg-orange-500/15 text-orange-400' }
+      return { txt: '📤 Enviado al cliente', cls: 'bg-zinc-800 text-zinc-500' }
+    }
+
+    return (
+      <div className="grid gap-4 pb-4 pt-1">
+        <div>
+          <h1 className="text-white font-extrabold text-2xl">{nombre ? `Hola, ${nombre} 👋` : 'Hola 👋'}</h1>
+          <p className="text-emerald-400 text-sm font-semibold mt-0.5">
+            {empresaActiva?.nombre_fantasia || 'JDFAR'} · Presupuestos
+          </p>
+        </div>
+
+        <button onClick={() => navigate('/presupuestos/nuevo')}
+          className="w-full bg-emerald-500 text-white rounded-3xl py-5 font-extrabold text-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-xl shadow-emerald-900/40">
+          <span className="text-2xl leading-none">＋</span> Nuevo presupuesto
+        </button>
+
+        {cargando ? (
+          <div className="flex justify-center py-10">
+            <div className="w-7 h-7 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
+          </div>
+        ) : presupuestos.length === 0 ? (
+          <div className="text-center py-12 grid gap-2">
+            <p className="text-6xl">📄</p>
+            <p className="text-zinc-300 font-bold text-lg">Todavía no hay presupuestos</p>
+            <p className="text-zinc-500 text-sm">Creá uno con el botón verde de arriba</p>
+          </div>
+        ) : (
+          <div className="grid gap-2">
+            <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest px-1">Tus presupuestos</p>
+            {lista.map(p => {
+              const e = estadoEmpleado(p)
+              return (
+                <button key={p.id} onClick={() => navigate(`/presupuestos/${p.id}`)}
+                  className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 grid gap-3 text-left w-full active:scale-[0.99] transition-all">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-white font-bold text-base truncate">{p.cliente_nombre}</p>
+                    <span className="text-zinc-600 text-xs shrink-0">{formatFecha(p.created_at)}</span>
+                  </div>
+                  <div className={`text-sm font-bold py-2.5 rounded-xl text-center ${e.cls}`}>{e.txt}</div>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="grid gap-5 pb-4 pt-1">

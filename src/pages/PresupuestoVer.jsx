@@ -35,6 +35,13 @@ export default function PresupuestoVer() {
     setAprobando(false)
   }
 
+  // Marca el presupuesto como enviado (cierra el flujo de Gonzalo)
+  async function marcarEnviado() {
+    if (pres?.enviado) return
+    await supabase.from('presupuesto').update({ enviado: true }).eq('id', id)
+    setPres(p => ({ ...p, enviado: true }))
+  }
+
   useEffect(() => { cargar() }, [id])
 
   async function cargar() {
@@ -98,6 +105,7 @@ export default function PresupuestoVer() {
       ? `https://wa.me/549${tel}?text=${encodeURIComponent(msg)}`
       : `https://wa.me/?text=${encodeURIComponent(msg)}`
     window.open(url, '_blank')
+    marcarEnviado()
   }
 
   async function compartirPDF() {
@@ -110,11 +118,13 @@ export default function PresupuestoVer() {
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try {
         await navigator.share({ files: [file], title: titulo })
+        marcarEnviado()
         return
       } catch { /* el usuario canceló — no hacemos nada */ return }
     }
     // En PC u otros: descarga el PDF
     doc.save(filename)
+    marcarEnviado()
   }
 
   if (cargando) return (
