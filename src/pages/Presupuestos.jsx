@@ -141,6 +141,17 @@ export default function Presupuestos() {
   return (
     <div className="grid gap-5 pb-4 pt-1">
 
+      {/* ── Acceso plantillas ──────────────────────────────────── */}
+      <button onClick={() => navigate('/presupuestos/plantillas')}
+        className="bg-zinc-900 border border-zinc-800 rounded-2xl py-3 px-4 flex items-center gap-3 active:scale-95 transition-all w-full text-left">
+        <span className="text-2xl">📋</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-white font-bold text-sm">Mis plantillas de presupuesto</p>
+          <p className="text-zinc-500 text-xs">Editá precios y modelos de trabajo</p>
+        </div>
+        <span className="text-zinc-600 text-lg">›</span>
+      </button>
+
       {/* ── Mi link de pedidos ─────────────────────────────────── */}
       <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-3xl p-5 text-center shadow-xl shadow-emerald-900/40">
         <p className="text-4xl mb-2">📥</p>

@@ -28,6 +28,7 @@ import PresupuestoNuevo from './pages/PresupuestoNuevo'
 import PresupuestoNuevoPlantilla from './pages/PresupuestoNuevoPlantilla'
 import PresupuestoVer from './pages/PresupuestoVer'
 import PedidoPublico from './pages/PedidoPublico'
+import PlantillasAdmin from './pages/PlantillasAdmin'
 
 // Elige el formulario de presupuesto según el modo de la empresa
 function PresupuestoNuevoSwitch() {
@@ -138,6 +139,7 @@ export default function AppRouter() {
             <Route path="/fiado" element={<Fiado />} />
             <Route path="/presupuestos" element={<Presupuestos />} />
             <Route path="/presupuestos/nuevo" element={<PresupuestoNuevoSwitch />} />
+            <Route path="/presupuestos/plantillas" element={<PlantillasAdmin />} />
             <Route path="/presupuestos/:id" element={<PresupuestoVer />} />
             <Route path="/equipo/tareas/:membresiaId" element={<EquipoTareas />} />
             <Route path="/contadora" element={<Contadora />} />
