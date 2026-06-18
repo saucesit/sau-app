@@ -257,12 +257,12 @@ export default function Presupuestos() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-white font-bold truncate">{p.cliente_nombre}</p>
-                    <p className="text-zinc-500 text-xs mt-0.5">{formatFecha(p.created_at)}</p>
+                    <p className="text-emerald-500 text-xs font-semibold mt-0.5">✓ Autorizado</p>
                   </div>
                   <div className="text-right shrink-0">
                     <p className="text-white font-extrabold text-sm">{formatMonto(p.total)}</p>
                     <span className={`text-[0.6rem] font-bold px-2 py-0.5 rounded-full mt-1 inline-block ${cfg.bg} ${cfg.text}`}>
-                      {cfg.label}
+                      {p.enviado ? '📤 Enviado' : cfg.label}
                     </span>
                   </div>
                 </button>
