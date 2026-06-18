@@ -47,7 +47,7 @@ export default function Presupuestos() {
     setCargando(true)
     const [{ data: pres }, { data: peds }] = await Promise.all([
       supabase.from('presupuesto')
-        .select('id, numero, cliente_nombre, titulo, total, estado, aprobado, enviado, created_at')
+        .select('id, numero, cliente_nombre, titulo, total, estado, aprobado, enviado, tiene_cambios, created_at')
         .eq('empresa_id', empresaActivaId)
         .order('created_at', { ascending: false }),
       supabase.from('pedido')
@@ -120,10 +120,17 @@ export default function Presupuestos() {
               const e = estadoEmpleado(p)
               return (
                 <button key={p.id} onClick={() => navigate(`/presupuestos/${p.id}`)}
-                  className="bg-zinc-900 border border-zinc-700 rounded-2xl p-4 grid gap-3 text-left w-full active:scale-[0.99] transition-all">
+                  className={`rounded-2xl p-4 grid gap-3 text-left w-full active:scale-[0.99] transition-all border ${
+                    p.tiene_cambios ? 'bg-amber-500/5 border-amber-500/40' : 'bg-zinc-900 border-zinc-700'
+                  }`}>
                   <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-white font-bold text-base truncate">{p.cliente_nombre}</p>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-white font-bold text-base truncate">{p.cliente_nombre}</p>
+                        {p.tiene_cambios && (
+                          <span className="shrink-0 text-[0.6rem] font-extrabold bg-amber-500 text-black px-2 py-0.5 rounded-full">MODIFICADO</span>
+                        )}
+                      </div>
                       {p.titulo && <p className="text-zinc-500 text-sm truncate mt-0.5">{p.titulo}</p>}
                     </div>
                     <span className="text-zinc-600 text-xs shrink-0 mt-0.5">{formatFecha(p.created_at)}</span>

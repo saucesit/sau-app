@@ -42,7 +42,16 @@ export default function PresupuestoVer() {
     setPres(p => ({ ...p, enviado: true }))
   }
 
-  useEffect(() => { cargar() }, [id])
+  useEffect(() => {
+    cargar()
+  }, [id])
+
+  // Cuando Gonzalo abre un presupuesto con cambios, resetea el flag
+  useEffect(() => {
+    if (!puedeAprobar && pres?.tiene_cambios) {
+      supabase.from('presupuesto').update({ tiene_cambios: false }).eq('id', id)
+    }
+  }, [pres?.tiene_cambios, puedeAprobar])
 
   async function cargar() {
     setCargando(true)
@@ -245,6 +254,22 @@ export default function PresupuestoVer() {
         <div className="bg-orange-500/10 border border-orange-500/20 rounded-2xl px-4 py-3">
           <p className="text-orange-300 text-sm italic">📝 {pres.notas}</p>
         </div>
+      )}
+
+      {/* ── Alerta de cambios (solo Gonzalo) ──────────────── */}
+      {!puedeAprobar && pres.tiene_cambios && (
+        <div className="bg-amber-500/15 border border-amber-500/30 rounded-2xl px-4 py-3 flex items-center gap-3">
+          <span className="text-2xl shrink-0">✏️</span>
+          <p className="text-amber-300 font-bold text-sm">Fede modificó este presupuesto. Revisá los cambios antes de enviarlo.</p>
+        </div>
+      )}
+
+      {/* ── Botón editar (solo Fede) ───────────────────────── */}
+      {puedeAprobar && (
+        <button onClick={() => navigate(`/presupuestos/${id}/editar`)}
+          className="w-full py-3.5 rounded-2xl border border-zinc-700 text-zinc-300 font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition-all">
+          ✏️ Editar presupuesto
+        </button>
       )}
 
       {/* ── Candado de aprobación ──────────────────────────── */}
