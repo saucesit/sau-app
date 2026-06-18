@@ -265,23 +265,26 @@ export default function PresupuestoVer() {
         </div>
       )}
 
-      {/* ── Cambiar estado (solo si está aprobado) ───────────── */}
+      {/* ── Cambiar estado del cliente (solo admin) ──────────── */}
+      {pres.aprobado && puedeAprobar && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 grid gap-2">
+          <p className="text-emerald-400 text-xs font-bold uppercase tracking-widest">Respuesta del cliente</p>
+          <div className="grid grid-cols-3 gap-2">
+            {ESTADOS.map(e => (
+              <button key={e.id} onClick={() => cambiarEstado(e.id)} disabled={cambiando}
+                className={`py-3 rounded-xl text-xs font-extrabold transition-all active:scale-95 ${
+                  pres.estado === e.id ? `${e.btn} text-white shadow-md` : 'bg-zinc-800 text-zinc-500'
+                }`}>
+                {e.emoji}<br />{e.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Enviar (empleado y admin cuando está aprobado) ────── */}
       {pres.aprobado && (
         <>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 grid gap-2">
-            <p className="text-emerald-400 text-xs font-bold uppercase tracking-widest">Estado</p>
-            <div className="grid grid-cols-3 gap-2">
-              {ESTADOS.map(e => (
-                <button key={e.id} onClick={() => cambiarEstado(e.id)} disabled={cambiando}
-                  className={`py-3 rounded-xl text-xs font-extrabold transition-all active:scale-95 ${
-                    pres.estado === e.id ? `${e.btn} text-white shadow-md` : 'bg-zinc-800 text-zinc-500'
-                  }`}>
-                  {e.emoji}<br />{e.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
           <button onClick={compartirPDF}
             className="w-full py-4 rounded-2xl bg-[#25D366] text-white font-extrabold text-base flex items-center justify-center gap-2 shadow-lg shadow-green-900/40 active:scale-95 transition-all">
             📄 Enviar PDF por WhatsApp
