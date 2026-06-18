@@ -89,6 +89,14 @@ export default function Presupuestos() {
       return { txt: '📤 Enviado al cliente', cls: 'bg-zinc-800 text-zinc-500' }
     }
 
+    async function abrirPresupuesto(p) {
+      if (p.tiene_cambios) {
+        setPresupuestos(prev => prev.map(x => x.id === p.id ? { ...x, tiene_cambios: false } : x))
+        await supabase.from('presupuesto').update({ tiene_cambios: false }).eq('id', p.id)
+      }
+      navigate(`/presupuestos/${p.id}`)
+    }
+
     return (
       <div className="grid gap-4 pb-4 pt-1">
         <div>
@@ -119,7 +127,7 @@ export default function Presupuestos() {
             {lista.map(p => {
               const e = estadoEmpleado(p)
               return (
-                <button key={p.id} onClick={() => navigate(`/presupuestos/${p.id}`)}
+                <button key={p.id} onClick={() => abrirPresupuesto(p)}
                   className={`rounded-2xl p-4 grid gap-3 text-left w-full active:scale-[0.99] transition-all border ${
                     p.tiene_cambios ? 'bg-amber-500/5 border-amber-500/40' : 'bg-zinc-900 border-zinc-700'
                   }`}>
