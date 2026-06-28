@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
+import { Send, X, MessageCircle, Loader2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { MODULOS } from '../lib/modulos'
@@ -773,11 +774,91 @@ const ACCIONES_AGENTE = [
   { id: 'registrar_venta',      label: '💵 Registrar ventas' },
 ]
 
+// ── Chat de prueba con el agente — simula la charla ANTES de tener
+// WhatsApp real conectado. Misma lógica que va a correr en el webhook,
+// distinto canal (esto es texto en pantalla, no WhatsApp).
+function ChatAgenteModal({ empresaId, nombreAgente, onCerrar }) {
+  const [mensajes,  setMensajes]  = useState([])
+  const [input,     setInput]     = useState('')
+  const [enviando,  setEnviando]  = useState(false)
+  const finRef = useRef(null)
+
+  useEffect(() => { finRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [mensajes, enviando])
+
+  async function enviar() {
+    const texto = input.trim()
+    if (!texto || enviando) return
+    const nuevos = [...mensajes, { role: 'user', content: texto }]
+    setMensajes(nuevos)
+    setInput('')
+    setEnviando(true)
+
+    const { data, error } = await supabase.functions.invoke('chat-agente', {
+      body: { empresa_id: empresaId, mensajes: nuevos }
+    })
+
+    setEnviando(false)
+    if (error || !data?.ok) {
+      setMensajes(m => [...m, { role: 'assistant', content: `(error: ${data?.error || error?.message || 'no se pudo responder'})` }])
+      return
+    }
+    setMensajes(m => [...m, { role: 'assistant', content: data.respuesta }])
+  }
+
+  return (
+    <div className="fixed inset-0 bg-zinc-950 z-[70] flex flex-col">
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800 shrink-0">
+        <button onClick={onCerrar} className="w-9 h-9 rounded-full bg-zinc-900 text-zinc-400 flex items-center justify-center">
+          <X size={18} aria-hidden="true" />
+        </button>
+        <div className="flex-1">
+          <p className="text-white font-bold">{nombreAgente}</p>
+          <p className="text-zinc-500 text-xs">Chat de prueba — no es WhatsApp real todavía</p>
+        </div>
+        <MessageCircle size={20} className="text-indigo-400" aria-hidden="true" />
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-4 grid gap-3 content-start">
+        {mensajes.length === 0 && (
+          <p className="text-zinc-600 text-sm text-center mt-8">Escribí como si fueras un cliente para probar a {nombreAgente}.</p>
+        )}
+        {mensajes.map((m, i) => (
+          <div key={i} className={`max-w-[80%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed ${
+            m.role === 'user'
+              ? 'bg-indigo-500 text-white self-end rounded-br-md'
+              : 'bg-zinc-900 text-zinc-200 self-start rounded-bl-md'
+          }`}>
+            {m.content}
+          </div>
+        ))}
+        {enviando && (
+          <div className="bg-zinc-900 text-zinc-500 self-start px-3.5 py-2.5 rounded-2xl rounded-bl-md flex items-center gap-2">
+            <Loader2 size={14} className="animate-spin" aria-hidden="true" /> escribiendo…
+          </div>
+        )}
+        <div ref={finRef} />
+      </div>
+
+      <div className="flex items-center gap-2 px-4 py-3 border-t border-zinc-800 shrink-0">
+        <input value={input} onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && enviar()}
+          placeholder="Escribí un mensaje..."
+          className="flex-1 bg-zinc-900 border border-zinc-800 rounded-full px-4 py-2.5 text-white text-sm outline-none placeholder:text-zinc-600 focus:border-indigo-500" />
+        <button onClick={enviar} disabled={enviando || !input.trim()}
+          className="w-10 h-10 rounded-full bg-indigo-500 text-white flex items-center justify-center shrink-0 disabled:opacity-40 active:scale-95 transition-all">
+          <Send size={16} aria-hidden="true" />
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function ConfigAgente({ empresaId }) {
   const [cfg,      setCfg]      = useState(null)
   const [cargando, setCargando] = useState(true)
   const [guardando,setGuardando]= useState(false)
   const [ok,       setOk]       = useState(false)
+  const [chatAbierto, setChatAbierto] = useState(false)
 
   useEffect(() => { cargar() }, [empresaId])
 
@@ -872,8 +953,123 @@ function ConfigAgente({ empresaId }) {
         {guardando ? 'Guardando…' : ok ? '✓ Guardado' : 'Guardar agente'}
       </button>
 
+      <button onClick={() => setChatAbierto(true)}
+        className="w-full py-3 rounded-2xl border border-indigo-500/30 text-indigo-300 font-bold text-sm active:scale-95 transition-all flex items-center justify-center gap-2">
+        <MessageCircle size={16} aria-hidden="true" /> Probar conversación
+      </button>
+
       {cfg.estado && cfg.estado !== 'pendiente' && (
         <p className="text-center text-[0.6rem] text-zinc-600">Estado de conexión: {cfg.estado}</p>
+      )}
+
+      {chatAbierto && (
+        <ChatAgenteModal empresaId={empresaId} nombreAgente={cfg.nombre || 'Asistente'} onCerrar={() => setChatAbierto(false)} />
+      )}
+    </div>
+  )
+}
+
+const TIPO_NOTA_CFG = {
+  negocio:   { label: 'Negocio',   color: 'text-indigo-300 bg-indigo-500/10' },
+  pricing:   { label: 'Pricing',   color: 'text-emerald-300 bg-emerald-500/10' },
+  operativo: { label: 'Operativo', color: 'text-amber-300 bg-amber-500/10' },
+  general:   { label: 'General',   color: 'text-zinc-400 bg-zinc-800' },
+}
+
+// ── Contexto del cliente: notas estructuradas (cómo vende, tamaño, etc.) ──
+// Separado de la "Nota rápida" (campo único en empresa.notas_admin):
+// acá se acumulan varias entradas categorizadas, pensadas para volver
+// a leerlas más adelante ("Claude, leé el contexto de OAKY").
+function ContextoCliente({ empresaId }) {
+  const [notas,     setNotas]     = useState([])
+  const [cargando,  setCargando]  = useState(true)
+  const [abierto,   setAbierto]   = useState(false)
+  const [titulo,    setTitulo]    = useState('')
+  const [tipo,      setTipo]      = useState('general')
+  const [contenido, setContenido] = useState('')
+  const [guardando, setGuardando] = useState(false)
+
+  useEffect(() => { cargar() }, [empresaId])
+
+  async function cargar() {
+    setCargando(true)
+    const { data } = await supabase.from('cliente_nota')
+      .select('*').eq('empresa_id', empresaId).order('created_at', { ascending: false })
+    setNotas(data || [])
+    setCargando(false)
+  }
+
+  async function agregar() {
+    if (!titulo.trim() || !contenido.trim()) return
+    setGuardando(true)
+    const { error } = await supabase.from('cliente_nota').insert({
+      empresa_id: empresaId, titulo: titulo.trim(), tipo, contenido: contenido.trim(),
+    })
+    setGuardando(false)
+    if (error) { alert('No se pudo guardar la nota'); return }
+    setTitulo(''); setContenido(''); setTipo('general')
+    await cargar()
+  }
+
+  async function borrar(id) {
+    await supabase.from('cliente_nota').delete().eq('id', id)
+    setNotas(prev => prev.filter(n => n.id !== id))
+  }
+
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 grid gap-3">
+      <button onClick={() => setAbierto(v => !v)} className="flex items-center justify-between text-left">
+        <p className="text-zinc-500 text-[0.6rem] font-bold uppercase tracking-widest">
+          📋 Contexto del cliente {!cargando && notas.length > 0 && `(${notas.length})`}
+        </p>
+        <span className="text-zinc-700 text-sm">{abierto ? '▲' : '▼'}</span>
+      </button>
+
+      {abierto && (
+        <div className="grid gap-3">
+          {cargando ? (
+            <p className="text-zinc-600 text-xs">Cargando…</p>
+          ) : notas.length === 0 ? (
+            <p className="text-zinc-600 text-xs">Todavía no hay notas de contexto.</p>
+          ) : (
+            <div className="grid gap-2">
+              {notas.map(n => (
+                <div key={n.id} className="bg-zinc-800/60 rounded-2xl px-3 py-2.5 grid gap-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={`text-[0.55rem] font-bold uppercase px-1.5 py-0.5 rounded-full shrink-0 ${TIPO_NOTA_CFG[n.tipo]?.color}`}>
+                        {TIPO_NOTA_CFG[n.tipo]?.label || n.tipo}
+                      </span>
+                      <p className="text-zinc-100 font-bold text-sm truncate">{n.titulo}</p>
+                    </div>
+                    <button onClick={() => borrar(n.id)} className="text-zinc-600 text-xs shrink-0">✕</button>
+                  </div>
+                  <p className="text-zinc-400 text-xs leading-relaxed whitespace-pre-wrap">{n.contenido}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="grid gap-2 pt-2 border-t border-zinc-800">
+            <input value={titulo} onChange={e => setTitulo(e.target.value)} placeholder="Título (ej: Cómo vende hoy)"
+              className="w-full bg-zinc-800/60 rounded-xl px-3 py-2 text-zinc-100 text-sm outline-none placeholder:text-zinc-600" />
+            <div className="flex gap-1.5">
+              {Object.entries(TIPO_NOTA_CFG).map(([id, c]) => (
+                <button key={id} onClick={() => setTipo(id)}
+                  className={`px-2.5 py-1 rounded-full text-[0.6rem] font-bold transition-all ${tipo === id ? c.color : 'bg-zinc-800 text-zinc-600'}`}>
+                  {c.label}
+                </button>
+              ))}
+            </div>
+            <textarea value={contenido} onChange={e => setContenido(e.target.value)} rows={3}
+              placeholder="Detalle..."
+              className="w-full bg-zinc-800/60 rounded-xl px-3 py-2 text-zinc-100 text-sm outline-none placeholder:text-zinc-600 resize-none" />
+            <button onClick={agregar} disabled={guardando}
+              className="w-full py-2.5 rounded-xl bg-indigo-500 text-white font-bold text-xs active:scale-95 transition-all disabled:opacity-50">
+              {guardando ? 'Guardando…' : '+ Agregar nota'}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -1215,6 +1411,9 @@ function ClientePanel({ empresaId, lead, onCerrar }) {
             {guardNota ? 'Guardando...' : notaOk ? '✓ Guardado' : 'Guardar'}
           </button>
         </div>
+
+        {/* ── Contexto del cliente (notas estructuradas) ──────── */}
+        <ContextoCliente empresaId={empresa.id} />
 
         {/* ── URL de ingreso ─────────────────────────────────── */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 flex items-center justify-between gap-2">
