@@ -43,7 +43,7 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
 
   try {
-    const { empresa_id, mensajes } = await req.json()
+    const { empresa_id, mensajes, caso_id } = await req.json()
     if (!empresa_id) throw new Error('Falta empresa_id')
     if (!Array.isArray(mensajes) || mensajes.length === 0) throw new Error('Falta mensajes')
 
@@ -61,6 +61,25 @@ serve(async (req) => {
       .single()
 
     if (dbErr || !cfg) throw new Error('No hay agente configurado para esta empresa')
+
+    // ── Caso: se crea en el primer mensaje, se reusa en los siguientes ──
+    let casoId = caso_id
+    if (!casoId) {
+      const { data: nuevoCaso, error: casoErr } = await db
+        .from('caso')
+        .insert({ empresa_id, canal: 'chat_prueba' })
+        .select('id')
+        .single()
+      if (casoErr || !nuevoCaso) throw new Error('No se pudo crear el caso')
+      casoId = nuevoCaso.id
+    }
+
+    // El último mensaje del array es siempre el nuevo (los anteriores ya
+    // se guardaron en llamadas previas) — lo guardamos antes de responder.
+    const ultimoMensaje = mensajes[mensajes.length - 1]
+    await db.from('caso_mensaje').insert({
+      caso_id: casoId, role: ultimoMensaje.role, content: ultimoMensaje.content,
+    })
 
     const systemPrompt = construirSystemPrompt(cfg)
 
@@ -87,7 +106,10 @@ serve(async (req) => {
     const claudeData = await claudeResp.json()
     const respuesta   = claudeData.content[0].text
 
-    return new Response(JSON.stringify({ ok: true, respuesta, agente: cfg.nombre }), {
+    await db.from('caso_mensaje').insert({ caso_id: casoId, role: 'assistant', content: respuesta })
+    await db.from('caso').update({ updated_at: new Date().toISOString() }).eq('id', casoId)
+
+    return new Response(JSON.stringify({ ok: true, respuesta, agente: cfg.nombre, caso_id: casoId }), {
       headers: { ...CORS, 'Content-Type': 'application/json' },
     })
 

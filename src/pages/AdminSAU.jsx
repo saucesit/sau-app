@@ -781,6 +781,7 @@ function ChatAgenteModal({ empresaId, nombreAgente, onCerrar }) {
   const [mensajes,  setMensajes]  = useState([])
   const [input,     setInput]     = useState('')
   const [enviando,  setEnviando]  = useState(false)
+  const casoIdRef = useRef(null) // se completa con la respuesta del primer mensaje
   const finRef = useRef(null)
 
   useEffect(() => { finRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [mensajes, enviando])
@@ -794,7 +795,7 @@ function ChatAgenteModal({ empresaId, nombreAgente, onCerrar }) {
     setEnviando(true)
 
     const { data, error } = await supabase.functions.invoke('chat-agente', {
-      body: { empresa_id: empresaId, mensajes: nuevos }
+      body: { empresa_id: empresaId, mensajes: nuevos, caso_id: casoIdRef.current }
     })
 
     setEnviando(false)
@@ -802,6 +803,7 @@ function ChatAgenteModal({ empresaId, nombreAgente, onCerrar }) {
       setMensajes(m => [...m, { role: 'assistant', content: `(error: ${data?.error || error?.message || 'no se pudo responder'})` }])
       return
     }
+    casoIdRef.current = data.caso_id
     setMensajes(m => [...m, { role: 'assistant', content: data.respuesta }])
   }
 
