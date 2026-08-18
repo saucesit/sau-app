@@ -28,6 +28,7 @@ import PresupuestoNuevo from './pages/PresupuestoNuevo'
 import PresupuestoNuevoPlantilla from './pages/PresupuestoNuevoPlantilla'
 import PresupuestoVer from './pages/PresupuestoVer'
 import PedidoPublico from './pages/PedidoPublico'
+import ReservaPublica from './pages/ReservaPublica'
 import PlantillasAdmin from './pages/PlantillasAdmin'
 import PresupuestoEditar from './pages/PresupuestoEditar'
 
@@ -121,6 +122,7 @@ export default function AppRouter() {
           <Route path="/prototipo" element={<KioscoFiado />} />
           <Route path="/quejate" element={<Landing />} />
           <Route path="/pedir/:empresaId" element={<PedidoPublico />} />
+          <Route path="/reservar/:empresaId" element={<ReservaPublica />} />
           <Route path="/r/:id" element={<Respuesta />} />
 
           <Route
