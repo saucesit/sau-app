@@ -86,8 +86,11 @@ begin
        set etapa = 'chapa', etapa_desde = now(), trabajo_hecho = false,
            excepcion = null, excepcion_desde = null, fecha_entrega = null
      where empresa_id = v_a and patente = 'ZZTEST01';
-    update vehiculo_monto m set cobro_compania = false, cobro_franquicia = false,
-           cobro_particular = false
+    -- También los montos: la suite los edita, y si no se reinician la corrida
+    -- siguiente arranca con valores de la anterior.
+    update vehiculo_monto m
+       set cobro_compania = false, cobro_franquicia = false, cobro_particular = false,
+           monto_compania = 0, monto_franquicia = 0, monto_particular = 0
       from vehiculo v where v.id = m.vehiculo_id and v.patente = 'ZZTEST01';
   end if;
 end $$;

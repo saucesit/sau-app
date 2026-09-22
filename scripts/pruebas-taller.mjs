@@ -290,6 +290,18 @@ console.log('\n8. ETAPAS HABILITADAS POR OPERARIO')
   const m1 = await rpc(users.mixto, 'taller_marcar_trabajo_hecho', { p_vehiculo: V2 })
   check('habilitado en dos etapas puede marcar en chapa', m1.ok, JSON.stringify(m1.body))
 
+  const m1bis = await rpc(users.mixto, 'taller_marcar_trabajo_hecho', { p_vehiculo: V2 })
+  check('no se puede marcar dos veces el mismo trabajo', !m1bis.ok)
+  check('y el mensaje lo dice con claridad',
+        /ya fue marcado como realizado/i.test(m1bis.body?.message || ''), m1bis.body?.message)
+
+  const otro = await rpc(users.operario, 'taller_marcar_trabajo_hecho', { p_vehiculo: V2 })
+  check('ni siquiera otro operario habilitado puede volver a marcarlo', !otro.ok)
+
+  const { body: evs } = await rest(users.admin,
+    `vehiculo_evento?vehiculo_id=eq.${V2}&tipo=eq.trabajo_hecho&etapa=eq.chapa&select=id`)
+  check('queda un único evento de trabajo para esa etapa', evs.length === 1, `hay ${evs.length}`)
+
   await rpc(users.coordinador, 'taller_validar_avance', { p_vehiculo: V2 })   // → preparacion
 
   const m2 = await rpc(users.mixto, 'taller_marcar_trabajo_hecho', { p_vehiculo: V2 })

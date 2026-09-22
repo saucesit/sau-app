@@ -189,7 +189,7 @@ La base tiene **32 tablas** en `public`, **todas con RLS habilitada**, y 3 vista
 
 ## 6. Migraciones
 
-**28 migraciones, de `0001` a `0028`, todas aplicadas en producción.** No hay ninguna pendiente.
+**29 migraciones, de `0001` a `0029`, todas aplicadas en producción.** No hay ninguna pendiente.
 
 Las más relevantes para esta revisión:
 
@@ -204,6 +204,7 @@ Las más relevantes para esta revisión:
 | `0026_taller_seguridad.sql` | **Flujo por funciones del servidor**, trigger guardián, montos y bitácora protegidos, storage aislado por empresa |
 | `0027_taller_especialidad.sql` | Primera versión de la especialidad del operario (una sola etapa) |
 | `0028_taller_etapas_habilitadas.sql` | Etapas habilitadas como lista, fin del modo permisivo, y cobros solo por función |
+| `0029_taller_marcado_idempotente.sql` | Un trabajo no se puede marcar dos veces |
 
 ### Advertencia importante sobre el proceso
 
@@ -302,8 +303,26 @@ etapas cargadas recibe *"Todavía no tenés etapas habilitadas"* al intentar mar
 no alcanza; hay que configurar el oficio. Por eso, al poner esto en producción **hay que cargarle
 las etapas a cada persona del taller antes de que empiecen a usarlo**.
 
-La única excepción es el personal de SAU (`es_contadora_o_admin()`), que no tiene membresía en la
-empresa del cliente y necesita poder dar soporte.
+### Acceso de soporte (break-glass)
+
+El personal de SAU — los perfiles con `es_sau_admin` o `es_sau_contadora` — **no tiene membresía en
+la empresa del cliente**, y por lo tanto tampoco tiene etapas habilitadas. Si se aplicara la regla
+tal cual, quedaría sin poder operar el taller de un cliente para darle soporte.
+
+`tiene_permiso_taller()` les concede todos los permisos, y `taller_marcar_trabajo_hecho()` los exime
+de la validación de etapas. En los hechos es un **acceso de emergencia con privilegio máximo sobre
+todos los clientes**, decidido a conciencia y aceptado en revisión. Consecuencias que conviene tener
+presentes:
+
+- Quien tenga una de esas dos banderas puede marcar trabajo, validar, entregar y ver montos de
+  **cualquier** empresa del sistema.
+- Las acciones quedan registradas en `vehiculo_evento` con el `autor_id` real, así que el uso es
+  rastreable después del hecho, pero **no hay aprobación previa ni alerta en el momento**.
+- Otorgar `es_sau_admin` o `es_sau_contadora` a alguien equivale a darle esa llave sobre toda la
+  base de clientes. Conviene revisar periódicamente quién las tiene.
+
+Si en algún momento se quiere cerrar, el cambio es acotado: sacar la rama de `es_contadora_o_admin()`
+en la función y darle al personal de soporte una membresía explícita en cada empresa que atienda.
 
 ### Los cobros solo se registran por función (migración 0028)
 
@@ -421,18 +440,21 @@ Excel.
 
 ### Suite de pruebas
 
-Hay **51 pruebas automatizadas** que corren con usuarios reales de **dos empresas distintas** y los
+Hay **55 pruebas automatizadas** que corren con usuarios reales de **dos empresas distintas** y los
 cuatro roles, autenticándose de verdad contra la API pública. Prueban las policies y las funciones,
 no la interfaz:
 
 ```bash
-supabase db query --linked -f scripts/seed-pruebas-taller.sql   # crea el banco de pruebas
-node scripts/pruebas-taller.mjs                                 # 51 pasan, 0 fallan
+supabase db query --linked -f scripts/seed-pruebas-taller.sql   # reinicia el banco de pruebas
+node scripts/pruebas-taller.mjs                                 # 55 pasan, 0 fallan
 ```
 
+**El seed hay que correrlo antes de cada ejecución**: la suite lleva el vehículo hasta entregado, y
+sin reiniciarlo la corrida siguiente arranca de un estado terminal. El seed hace ese reinicio y
+**no toca los datos demo**: trabaja sobre dos empresas `ZZ PRUEBA` creadas aparte.
+
 Cubren aislamiento entre empresas, montos, flujo de etapas, excepciones, bitácora, storage, entrega,
-etapas habilitadas por operario y registro de cobros. El seed es repetible y **no toca los datos
-demo**: trabaja sobre dos empresas `ZZ PRUEBA` creadas aparte.
+etapas habilitadas por operario, doble marcado y registro de cobros.
 
 ### Sin probar
 
