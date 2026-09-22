@@ -40,6 +40,7 @@ const TallerLayout  = lazy(() => import('./pages/taller/TallerLayout'))
 const TallerTablero = lazy(() => import('./pages/taller/Tablero'))
 const TallerAlta    = lazy(() => import('./pages/taller/Alta'))
 const TallerFicha   = lazy(() => import('./pages/taller/Ficha'))
+const TallerAdmin   = lazy(() => import('./pages/taller/Admin'))
 
 // Interfaz clásica del taller, la que usa cualquier empresa que no sea Forani.
 import TallerClasicoTablero from './pages/taller/clasico/Tablero'
@@ -196,6 +197,7 @@ function Rutas() {
             >
               <Route path="/taller" element={<TallerTablero />} />
               <Route path="/taller/nuevo" element={<TallerAlta />} />
+              <Route path="/taller/admin" element={<TallerAdmin />} />
               <Route path="/taller/:id" element={<TallerFicha />} />
             </Route>
           )}

@@ -24,7 +24,7 @@ function Icono({ d, children }) {
 }
 
 export default function TallerLayout() {
-  const { tieneModulo, empresaActiva } = useAuth()
+  const { tieneModulo, tienePermiso, empresaActiva } = useAuth()
   const navigate = useNavigate()
 
   if (!tieneModulo('taller')) return <Navigate to="/" replace />
@@ -52,12 +52,28 @@ export default function TallerLayout() {
               <rect x="6.8" y="2" width="4" height="8" />
               <rect x="12.1" y="2" width="2.4" height="5" />
             </Icono>
+            <span className="t-rail-label">PIZARRA</span>
           </NavLink>
 
           <NavLink to="/taller/nuevo" className={claseRail} title="Ingresar vehículo"
                    aria-label="Ingresar vehículo">
             <Icono d="M8 2.5v11M2.5 8h11" />
+            <span className="t-rail-label">INGRESO</span>
           </NavLink>
+
+          {/* Administración del taller: solo para el dueño o quien él habilite */}
+          {tienePermiso('empresa.admin') && (
+            <NavLink to="/taller/admin" className={claseRail} title="Administración"
+                     aria-label="Administración del taller">
+              <Icono>
+                <circle cx="6" cy="5" r="2.4" />
+                <path d="M1.8 13.5c0-2.3 1.9-4 4.2-4s4.2 1.7 4.2 4" />
+                <circle cx="12" cy="6.5" r="1.7" />
+                <path d="M10.6 12.2c.3-1.5 1.5-2.4 2.9-2.2" />
+              </Icono>
+              <span className="t-rail-label">ADMIN</span>
+            </NavLink>
+          )}
 
           <div className="t-rail-foot">SAU<br />01</div>
         </nav>

@@ -52,6 +52,7 @@ export const TAREAS = [
     titulo: 'Trabaja en el taller',
     descripcion: 'Ve los vehículos, marca su trabajo como realizado y suma observaciones. No ve montos',
     permisos: ['taller.ver', 'taller.trabajar'],
+    clave: 'taller.trabajar',
     modulo: 'taller',
     colorActivo: 'bg-sky-500',
     colorFondo:  'bg-sky-50 border-sky-200',
@@ -63,6 +64,7 @@ export const TAREAS = [
     titulo: 'Coordina el taller',
     descripcion: 'Da ingreso a vehículos y valida el paso de una etapa a la siguiente',
     permisos: ['taller.ver', 'taller.cargar', 'taller.validar'],
+    clave: 'taller.validar',
     modulo: 'taller',
     colorActivo: 'bg-teal-600',
     colorFondo:  'bg-teal-50 border-teal-200',
@@ -74,6 +76,7 @@ export const TAREAS = [
     titulo: 'Ve los montos del taller',
     descripcion: 'Carga y consulta lo que se factura a la compañía, la franquicia y el particular',
     permisos: ['taller.montos'],
+    clave: 'taller.montos',
     modulo: 'taller',
     colorActivo: 'bg-amber-500',
     colorFondo:  'bg-amber-50 border-amber-200',
@@ -114,8 +117,11 @@ export function presetsVisibles(tieneModulo) {
 
 // ── Helpers ───────────────────────────────────────────────────────
 export function permisosATareas(permisos = []) {
+  // `clave` es el permiso que identifica a la tarea. Hace falta donde varias
+  // comparten uno: todas las del taller incluyen taller.ver, así que sin esto
+  // alguien con solo taller.ver figuraba como si trabajara en el taller.
   return TAREAS
-    .filter(t => t.permisos.some(p => permisos.includes(p)))
+    .filter(t => t.clave ? permisos.includes(t.clave) : t.permisos.some(p => permisos.includes(p)))
     .map(t => t.id)
 }
 
