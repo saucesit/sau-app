@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { ETAPAS_CON_OPERARIO } from '../lib/taller'
 
 // ── Definición de tareas en lenguaje de negocio ───────────────────
 export const TAREAS = [
@@ -138,6 +139,7 @@ export default function EquipoTareas() {
 
   const [mem,       setMem]       = useState(null)
   const [selected,  setSelected]  = useState([])
+  const [especialidad, setEspecialidad] = useState('')
   const [cargando,  setCargando]  = useState(true)
   const [guardando, setGuardando] = useState(false)
   const [ok,        setOk]        = useState(false)
@@ -148,12 +150,13 @@ export default function EquipoTareas() {
     ;(async () => {
       const { data } = await supabase
         .from('membresia')
-        .select('id, permisos, rol, profile:usuario_id(nombre, apellido)')
+        .select('id, permisos, rol, taller_especialidad, profile:usuario_id(nombre, apellido)')
         .eq('id', membresiaId)
         .single()
       if (data) {
         setMem(data)
         setSelected(permisosATareas(data.permisos || []))
+        setEspecialidad(data.taller_especialidad || '')
       }
       setCargando(false)
     })()
@@ -176,7 +179,11 @@ export default function EquipoTareas() {
     const nuevosPermisos = tareasAPermisos(selected)
     const { error: err } = await supabase
       .from('membresia')
-      .update({ permisos: nuevosPermisos })
+      .update({
+        permisos: nuevosPermisos,
+        // Si deja de trabajar en el taller, la especialidad se limpia.
+        taller_especialidad: selected.includes('taller_trabajo') ? (especialidad || null) : null,
+      })
       .eq('id', membresiaId)
     setGuardando(false)
     if (err) return setError('No se pudo guardar. Revisá tu conexión.')
@@ -305,6 +312,34 @@ export default function EquipoTareas() {
           })}
         </div>
       </div>
+
+      {/* Especialidad: solo puede marcar trabajo en la etapa de su oficio */}
+      {tieneModulo('taller') && selected.includes('taller_trabajo') && (
+        <div>
+          <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest mb-3">
+            ¿En qué trabaja dentro del taller?
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {[{ id: '', label: 'Todas las etapas' }, ...ETAPAS_CON_OPERARIO].map(e => {
+              const activo = especialidad === e.id
+              return (
+                <button key={e.id || 'todas'} onClick={() => setEspecialidad(e.id)}
+                  className={`px-4 py-3 rounded-2xl font-bold text-sm transition-all active:scale-95 ${
+                    activo ? 'bg-sky-500 text-white' : 'bg-white text-slate-600 shadow-sm'
+                  }`}
+                >
+                  {e.label}
+                </button>
+              )
+            })}
+          </div>
+          <p className="text-xs text-slate-400 mt-2.5 leading-snug">
+            {especialidad
+              ? `Solo va a poder marcar trabajo realizado en ${ETAPAS_CON_OPERARIO.find(e => e.id === especialidad)?.label}.`
+              : 'Sin especialidad va a poder marcar trabajo en cualquier etapa. Conviene elegir una.'}
+          </p>
+        </div>
+      )}
 
       {/* Resumen de permisos */}
       {selected.length > 0 && (

@@ -22,6 +22,16 @@ export const ETAPAS = [
 /** Etapas que cuentan como "en el taller" (entregado ya salió) */
 export const ETAPAS_ACTIVAS = ETAPAS.filter(e => e.id !== 'entregado')
 
+/**
+ * Etapas donde efectivamente trabaja un operario, y por lo tanto las únicas que
+ * pueden ser su especialidad. Recepción es administrativa y Terminado es la
+ * antesala de la entrega. Tiene que coincidir con taller_etapas_con_operario()
+ * en la base, que es quien realmente lo hace cumplir.
+ */
+export const ETAPAS_CON_OPERARIO = ETAPAS.filter(e =>
+  ['chapa', 'preparacion', 'pintura', 'pre_entrega'].includes(e.id)
+)
+
 export const EXCEPCIONES = [
   { id: 'mecanica',   label: 'Mecánica',   color: 'text-sky-400 bg-sky-500/15'     },
   { id: 'detenido',   label: 'Detenido',   color: 'text-red-400 bg-red-500/15'     },
