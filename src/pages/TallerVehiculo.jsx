@@ -47,7 +47,7 @@ function Cadena({ etapa }) {
 export default function TallerVehiculo() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { tienePermiso, user } = useAuth()
+  const { tienePermiso } = useAuth()
 
   const [v,        setV]        = useState(null)
   const [eventos,  setEventos]  = useState([])
@@ -56,6 +56,7 @@ export default function TallerVehiculo() {
   const [nota,     setNota]     = useState('')
   const [accion,   setAccion]   = useState(false)   // hay una acción en curso
   const [fEntrega, setFEntrega] = useState('')
+  const [error,    setError]    = useState(null)
 
   const verMontos  = tienePermiso('taller.montos')
   const puedeValidar  = tienePermiso('taller.validar')
@@ -89,82 +90,48 @@ export default function TallerVehiculo() {
     setCargando(false)
   }
 
-  async function registrar(tipo, texto, etapa) {
-    await supabase.from('vehiculo_evento').insert({
-      vehiculo_id: id, tipo, texto, etapa: etapa ?? v.etapa, autor_id: user?.id,
-    })
-  }
-
   /**
-   * El operario marca lo suyo como hecho. No mueve el vehículo: queda esperando validación.
-   * Va por RPC porque el operario no tiene permiso de UPDATE sobre vehiculo — la función
-   * valida el permiso del lado del servidor y es lo único que puede tocar.
+   * Todo el flujo pasa por funciones del servidor, que validan permiso, etapa y
+   * transición. Si rechazan, el mensaje viene de la base y se lo mostramos tal cual.
    */
-  async function marcarHecho() {
+  async function llamar(fn, args) {
     setAccion(true)
-    const { error } = await supabase.rpc('taller_marcar_trabajo_hecho', { p_vehiculo: id })
-    if (error) console.error('No se pudo marcar el trabajo:', error)
+    setError(null)
+    const { error: err } = await supabase.rpc(fn, args)
+    if (err) setError(err.message.replace(/^.*?:\s*/, ''))
     await cargar()
     setAccion(false)
+    return !err
   }
+
+  /** El operario marca lo suyo como hecho. No mueve el vehículo: queda esperando validación. */
+  const marcarHecho = () => llamar('taller_marcar_trabajo_hecho', { p_vehiculo: id })
 
   /** Validación de un rol habilitado: recién acá el vehículo avanza de etapa. */
-  async function validarYAvanzar() {
-    const sig = etapaSiguiente(v.etapa)
-    if (!sig) return
-    setAccion(true)
-    await supabase.from('vehiculo').update({
-      etapa: sig, etapa_desde: new Date().toISOString(),
-      trabajo_hecho: false, updated_at: new Date().toISOString(),
-    }).eq('id', id)
-    await registrar('avance', `${etapaLabel(v.etapa)} validada — pasa a ${etapaLabel(sig)}`, sig)
-    await cargar()
-    setAccion(false)
-  }
+  const validarYAvanzar = () => llamar('taller_validar_avance', { p_vehiculo: id })
 
   /** La excepción es una etiqueta encima de la etapa: no la reemplaza ni la reinicia. */
-  async function toggleExcepcion(exId) {
-    setAccion(true)
-    const activar = v.excepcion !== exId
-    await supabase.from('vehiculo').update({
-      excepcion:       activar ? exId : null,
-      excepcion_desde: activar ? new Date().toISOString() : null,
-      updated_at:      new Date().toISOString(),
-    }).eq('id', id)
-    const label = excepcionCfg(exId)?.label
-    await registrar('excepcion', activar
-      ? `Activado ${label} (sigue en ${etapaLabel(v.etapa)})`
-      : `Levantado ${label} — retoma en ${etapaLabel(v.etapa)}`)
-    await cargar()
-    setAccion(false)
-  }
+  const toggleExcepcion = (exId) =>
+    llamar('taller_cambiar_excepcion', { p_vehiculo: id, p_excepcion: v.excepcion === exId ? null : exId })
 
-  async function toggleCobro(campo, label) {
-    setAccion(true)
-    const nuevo = !v[campo]
-    await supabase.from('vehiculo_monto')
-      .update({ [campo]: nuevo, updated_at: new Date().toISOString() })
-      .eq('vehiculo_id', id)
-    await registrar('cobro', `${label}: ${nuevo ? 'validado' : 'desmarcado'}`)
-    await cargar()
-    setAccion(false)
-  }
+  const toggleCobro = (campo) =>
+    llamar('taller_registrar_cobro', { p_vehiculo: id, p_campo: campo, p_valor: !v[campo] })
 
   async function entregar() {
-    setAccion(true)
-    await supabase.from('vehiculo').update({
-      etapa: 'entregado', etapa_desde: new Date().toISOString(),
-      fecha_entrega: fEntrega, updated_at: new Date().toISOString(),
-    }).eq('id', id)
-    await registrar('entrega', `Vehículo entregado al cliente`, 'entregado')
-    navigate('/taller')
+    const ok = await llamar('taller_entregar', { p_vehiculo: id, p_fecha: fEntrega })
+    if (ok) navigate('/taller')
   }
 
+  /** Lo único que el navegador escribe directo en la bitácora. El autor lo pone la base. */
   async function agregarNota() {
     if (!nota.trim()) return
     setAccion(true)
-    await registrar('nota', nota.trim())
-    setNota('')
+    setError(null)
+    const { error: err } = await supabase.from('vehiculo_evento').insert({
+      vehiculo_id: id, tipo: 'nota', texto: nota.trim(), etapa: v.etapa,
+    })
+    if (err) setError(err.message)
+    else setNota('')
     await cargar()
     setAccion(false)
   }
@@ -182,6 +149,12 @@ export default function TallerVehiculo() {
 
   return (
     <div className="space-y-3 pb-4">
+
+      {error && (
+        <p className="text-red-400 text-xs font-semibold bg-red-500/10 border border-red-500/30 rounded-2xl px-4 py-3">
+          {error}
+        </p>
+      )}
 
       {/* Encabezado */}
       <Panel>
@@ -291,7 +264,7 @@ export default function TallerVehiculo() {
           ].map(x => (
             <button
               key={x.campo}
-              onClick={() => toggleCobro(x.campo, x.label)}
+              onClick={() => toggleCobro(x.campo)}
               disabled={accion || entregado}
               className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl border mb-2 text-left disabled:opacity-60 ${
                 v[x.campo] ? 'bg-emerald-500/10 border-emerald-500/40' : 'bg-zinc-950 border-zinc-800'

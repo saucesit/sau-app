@@ -28,7 +28,7 @@ const inputCls =
   'placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500'
 
 export default function TallerNuevo() {
-  const { empresaActivaId, tienePermiso, user } = useAuth()
+  const { empresaActivaId, tienePermiso } = useAuth()
   const navigate = useNavigate()
   const verMontos = tienePermiso('taller.montos')
 
@@ -68,7 +68,7 @@ export default function TallerNuevo() {
       // Si una foto falla no tiramos abajo el ingreso: el vehículo ya quedó cargado.
       if (upErr) { console.error('Error subiendo archivo:', upErr); continue }
       await supabase.from('vehiculo_archivo').insert({
-        vehiculo_id: vehiculoId, tipo, path, nombre: file.name, autor_id: user?.id,
+        vehiculo_id: vehiculoId, tipo, path, nombre: file.name,
       })
     }
   }
@@ -106,21 +106,17 @@ export default function TallerNuevo() {
       return
     }
 
-    // Los montos van en su propia tabla, y solo los escribe quien tiene permiso.
+    // La fila de montos la crea un trigger en cero, así existe aunque el vehículo
+    // lo cargue un coordinador. Acá solo la completa quien tiene permiso.
     if (verMontos) {
-      await supabase.from('vehiculo_monto').insert({
-        vehiculo_id:      data.id,
-        empresa_id:       empresaActivaId,
-        monto_compania:   Number(f.monto_compania   || 0),
-        monto_franquicia: Number(f.monto_franquicia || 0),
-        monto_particular: Number(f.monto_particular || 0),
-      })
+      await supabase.from('vehiculo_monto')
+        .update({
+          monto_compania:   Number(f.monto_compania   || 0),
+          monto_franquicia: Number(f.monto_franquicia || 0),
+          monto_particular: Number(f.monto_particular || 0),
+        })
+        .eq('vehiculo_id', data.id)
     }
-
-    await supabase.from('vehiculo_evento').insert({
-      vehiculo_id: data.id, tipo: 'ingreso', etapa: 'recepcion',
-      texto: 'Vehículo ingresado al taller', autor_id: user?.id,
-    })
 
     await subirArchivos(data.id)
     navigate(`/taller/${data.id}`, { replace: true })
