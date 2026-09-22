@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Layout from './components/Layout'
@@ -31,9 +32,12 @@ import PedidoPublico from './pages/PedidoPublico'
 import ReservaPublica from './pages/ReservaPublica'
 import PlantillasAdmin from './pages/PlantillasAdmin'
 import PresupuestoEditar from './pages/PresupuestoEditar'
-import Taller from './pages/Taller'
-import TallerNuevo from './pages/TallerNuevo'
-import TallerVehiculo from './pages/TallerVehiculo'
+// El taller tiene su propio armazón e identidad visual, y se carga aparte:
+// los clientes que no tienen el módulo no descargan nada de esto.
+const TallerLayout = lazy(() => import('./pages/taller/TallerLayout'))
+const TallerTablero = lazy(() => import('./pages/taller/Tablero'))
+const TallerAlta    = lazy(() => import('./pages/taller/Alta'))
+const TallerFicha   = lazy(() => import('./pages/taller/Ficha'))
 
 // Elige el formulario de presupuesto según el modo de la empresa
 function PresupuestoNuevoSwitch() {
@@ -148,14 +152,26 @@ export default function AppRouter() {
             <Route path="/presupuestos/plantillas" element={<PlantillasAdmin />} />
             <Route path="/presupuestos/:id/editar" element={<PresupuestoEditar />} />
             <Route path="/presupuestos/:id" element={<PresupuestoVer />} />
-            <Route path="/taller" element={<Taller />} />
-            <Route path="/taller/nuevo" element={<TallerNuevo />} />
-            <Route path="/taller/:id" element={<TallerVehiculo />} />
             <Route path="/equipo/tareas/:membresiaId" element={<EquipoTareas />} />
             <Route path="/contadora" element={<Contadora />} />
             <Route path="/contadora/:empresaId" element={<ContadoraEmpresa />} />
             <Route path="/perfil" element={<Perfil />} />
             <Route path="/importar" element={<Importar />} />
+          </Route>
+
+          {/* Taller: fuera del Layout de SAU, con su propio armazón y ancho completo */}
+          <Route
+            element={
+              <Protegido>
+                <Suspense fallback={<Splash />}>
+                  <TallerLayout />
+                </Suspense>
+              </Protegido>
+            }
+          >
+            <Route path="/taller" element={<TallerTablero />} />
+            <Route path="/taller/nuevo" element={<TallerAlta />} />
+            <Route path="/taller/:id" element={<TallerFicha />} />
           </Route>
 
           <Route path="/sau-admin" element={<ProtegidoAdmin><AdminSAU /></ProtegidoAdmin>} />

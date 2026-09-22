@@ -104,6 +104,83 @@ export function fmtMonto(n) {
   }).format(n || 0)
 }
 
+/**
+ * Severidad de un vehículo, en un solo lugar: la usan la tarjeta de la pizarra,
+ * la cola de decisiones y la ficha, así los tres dicen lo mismo del mismo auto.
+ * Devuelve `motivo` solo cuando hay algo que decidir — eso arma la cola.
+ */
+export function estado(v) {
+  const enTaller = diasEnTaller(v)
+  const enEtapa  = diasEnEtapa(v)
+  const vence    = v.fecha_pactada
+    ? Math.ceil((new Date(v.fecha_pactada).getTime() - Date.now()) / 86400000)
+    : null
+
+  if (enTaller > DIAS_ALERTA_TALLER)
+    return { s: 'urgent', tag: 'DEMORA CRÍTICA', motivo: `${enTaller} días en taller` }
+  if (vence !== null && vence < 0)
+    return { s: 'urgent', tag: 'VENCIDO', motivo: `vencido hace ${-vence} días` }
+  if (enEtapa > DIAS_ALERTA_ETAPA)
+    return { s: 'warn', tag: 'SIN AVANZAR', motivo: `${enEtapa} días sin avanzar` }
+  if (vence !== null && vence <= 2)
+    return { s: 'warn', tag: 'VENCE PRONTO', motivo: vence === 0 ? 'vence hoy' : `vence en ${vence} días` }
+  if (v.etapa === 'terminado')
+    return { s: 'ready', tag: 'LISTO PARA ENTREGAR', motivo: null }
+  if (v.trabajo_hecho)
+    return { s: 'ok', tag: 'ESPERA VALIDACIÓN', motivo: null }
+  return { s: 'ok', tag: 'EN PROCESO', motivo: null }
+}
+
+/**
+ * Qué hay que hacer con este auto ahora. Espeja las reglas que aplica la base
+ * en taller_validar_avance y taller_marcar_trabajo_hecho: si acá dice una cosa
+ * y el servidor rechaza otra, es que se desincronizaron.
+ */
+export function proximaAccion(v) {
+  if (v.excepcion) {
+    const label = excepcionCfg(v.excepcion)?.label.toLowerCase() || v.excepcion
+    return {
+      bloqueado: true,
+      titulo: `Levantar ${label}`,
+      detalle: `Mientras esté activo, el auto sigue en ${etapaLabel(v.etapa)} y no avanza.`,
+    }
+  }
+  if (v.etapa === 'entregado')
+    return { bloqueado: false, titulo: 'Entregado', detalle: 'Ya salió del taller.' }
+  if (v.etapa === 'terminado')
+    return {
+      bloqueado: false,
+      titulo: 'Registrar cobros y entregar',
+      detalle: 'Se puede entregar aunque queden montos pendientes.',
+    }
+  if (ETAPAS_CON_OPERARIO.some(e => e.id === v.etapa)) {
+    if (!v.trabajo_hecho)
+      return {
+        bloqueado: false,
+        titulo: `Esperando al operario de ${etapaLabel(v.etapa).toLowerCase()}`,
+        detalle: 'Tiene que marcar su trabajo como realizado antes de que alguien lo valide.',
+      }
+    return {
+      bloqueado: false,
+      titulo: `Validar y pasar a ${etapaLabel(etapaSiguiente(v.etapa))}`,
+      detalle: 'El operario ya marcó el trabajo. Falta la confirmación.',
+    }
+  }
+  return {
+    bloqueado: false,
+    titulo: 'Validar recepción y pasar a Chapa',
+    detalle: 'Recepción no tiene operario: la valida administración o el coordinador.',
+  }
+}
+
+/** AF937ER → AF 937 ER. La base guarda sin espacios; esto es solo para leer. */
+export function patenteLegible(p) {
+  if (!p) return ''
+  return p
+    .replace(/^([A-Z]{2})(\d{3})([A-Z]{2})$/, '$1 $2 $3')
+    .replace(/^([A-Z]{3})(\d{3})$/, '$1 $2')
+}
+
 export function fmtFecha(iso) {
   if (!iso) return '—'
   return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
