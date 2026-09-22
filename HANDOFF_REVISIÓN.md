@@ -189,7 +189,7 @@ La base tiene **32 tablas** en `public`, **todas con RLS habilitada**, y 3 vista
 
 ## 6. Migraciones
 
-**30 migraciones, de `0001` a `0030`, todas aplicadas en producción.** No hay ninguna pendiente.
+**31 migraciones, de `0001` a `0031`, todas aplicadas en producción.** No hay ninguna pendiente.
 
 Las más relevantes para esta revisión:
 
@@ -206,6 +206,7 @@ Las más relevantes para esta revisión:
 | `0028_taller_etapas_habilitadas.sql` | Etapas habilitadas como lista, fin del modo permisivo, y cobros solo por función |
 | `0029_taller_marcado_idempotente.sql` | Un trabajo no se puede marcar dos veces |
 | `0030_tema_taller.sql` | `empresa.tema_taller`: qué interfaz del taller ve cada cliente |
+| `0031_membresias_seguridad.sql` | **Cierre del alta de membresías desde el navegador** e invitaciones de un solo uso |
 
 ### Advertencia importante sobre el proceso
 
@@ -224,10 +225,34 @@ Al día de hoy fueron verificadas y coinciden.
 
 ## 7. RLS y permisos por rol
 
+### Cómo se entra a una empresa (migración 0031)
+
+Hasta el 22 de septiembre de 2026 había un agujero grave, ya cerrado, que conviene conocer para no
+reintroducirlo:
+
+- `membresia` tenía como única condición de INSERT `usuario_id = auth.uid()`. **No miraba a qué
+  empresa ni con qué rol**, así que cualquiera con una cuenta de SAU podía agregarse como admin de
+  cualquier cliente. Verificado: un usuario de otra empresa se auto-agregó a Forani y leyó sus 12
+  vehículos con los montos.
+- `empresa` tenía una policy de SELECT con `using (true)`: **sin login siquiera** se listaban todas
+  las empresas con su `codigo_invitacion`, así que el código nunca fue secreto.
+- No había policy de DELETE en `membresia`: los borrados devolvían 200 sin borrar nada.
+- `membresia` SELECT y UPDATE solo contemplaban al personal de SAU, así que el dueño de un cliente
+  no podía ni listar a su equipo ni desactivar a nadie: la pantalla Equipo no le funcionaba.
+
+**Cómo quedó:** las membresías las crean únicamente funciones del servidor. El alta de gente pasa
+por `invitacion`, de un solo uso y con vencimiento a 7 días, donde **quien invita fija el rol, los
+permisos y las etapas**; el navegador de quien acepta no puede cambiarlos porque la función los lee
+de la fila, no del pedido. El código permanente se eliminó junto con su columna.
+
+Hay 26 pruebas negativas en `scripts/pruebas-membresias.mjs` que cubren cada uno de esos casos.
+
 ### Patrón general
 
 Casi todas las tablas usan las funciones auxiliares `empresas_del_usuario()` y
 `es_contadora_o_admin()`: se ve lo de la propia empresa, más acceso total para admin y contadora.
+Las de membresías e invitaciones usan además `es_admin_de_empresa()`, que identifica al dueño de un
+cliente sin darle nada fuera de su empresa.
 
 ### Módulo taller: enfoque distinto y más estricto
 

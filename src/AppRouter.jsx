@@ -16,7 +16,7 @@ import Fiado from './pages/Fiado'
 import Contadora from './pages/Contadora'
 import ContadoraEmpresa from './pages/ContadoraEmpresa'
 import Perfil from './pages/Perfil'
-import Unirse from './pages/Unirse'
+import Invitacion from './pages/Invitacion'
 import AdminSAU from './pages/AdminSAU'
 import AdminContadora from './pages/AdminContadora'
 import Landing from './pages/Landing'
@@ -140,7 +140,7 @@ function Rutas() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/registro" element={<RequiereAuth><Registro /></RequiereAuth>} />
-          <Route path="/unirse" element={<Unirse />} />
+          <Route path="/invitacion/:token" element={<Invitacion />} />
           <Route path="/prototipo" element={<KioscoFiado />} />
           <Route path="/quejate" element={<Landing />} />
           <Route path="/pedir/:empresaId" element={<PedidoPublico />} />

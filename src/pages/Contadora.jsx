@@ -80,7 +80,6 @@ function ModalNuevoCliente({ onCerrar, onCreado }) {
         actividad:             rubro,
         modo_simulacion:       true,
         modulos_activos:       modulos,
-        codigo_invitacion:     codigo,
       })
       .select('id')
       .single()

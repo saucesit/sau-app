@@ -24,11 +24,9 @@ export default function Perfil() {
   const [condicion,      setCondicion]      = useState('monotributo')
   const [categoriaMono,  setCategoriaMono]  = useState('C')
   const [puntoVenta,     setPuntoVenta]     = useState('1')
-  const [codigoInv,      setCodigoInv]      = useState('')
   const [guardando,      setGuardando]      = useState(false)
   const [ok,             setOk]             = useState(false)
   const [error,          setError]          = useState(null)
-  const [copiado,        setCopiado]        = useState(false)
   const [modulos,        setModulos]        = useState([])
 
   // Cargar datos actuales de la empresa
@@ -40,7 +38,6 @@ export default function Perfil() {
     setCondicion(empresaActiva.condicion_fiscal || 'monotributo')
     setCategoriaMono(empresaActiva.categoria_monotributo || 'C')
     setPuntoVenta(String(empresaActiva.punto_de_venta || 1))
-    setCodigoInv(empresaActiva.codigo_invitacion || '')
     setModulos(modulosActivos)
   }, [empresaActiva, modulosActivos])
 
@@ -68,12 +65,6 @@ export default function Perfil() {
     setTimeout(() => setOk(false), 2500)
     // Refrescar contexto con reload suave
     window.location.reload()
-  }
-
-  function copiarCodigo() {
-    navigator.clipboard.writeText(codigoInv)
-    setCopiado(true)
-    setTimeout(() => setCopiado(false), 2000)
   }
 
   const esAdmin = tienePermiso('empresa.admin')
@@ -235,24 +226,6 @@ export default function Perfil() {
         </>
       )}
 
-      {/* ── CÓDIGO DE INVITACIÓN ── */}
-      {esAdmin && codigoInv && (
-        <>
-          <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest mt-2">Equipo</p>
-          <button onClick={copiarCodigo}
-            className="bg-white rounded-3xl px-5 py-4 shadow-sm flex items-center justify-between active:scale-[0.98] transition-all"
-          >
-            <div>
-              <p className="text-[0.65rem] text-slate-400 font-semibold uppercase tracking-widest mb-0.5">
-                Código de invitación
-              </p>
-              <p className="text-xl font-extrabold text-slate-800 tracking-widest">{codigoInv}</p>
-              <p className="text-xs text-slate-400 mt-0.5">Compartilo con tu equipo para que se unan</p>
-            </div>
-            <span className="text-2xl">{copiado ? '✅' : '📋'}</span>
-          </button>
-        </>
-      )}
 
       {/* ── GUARDAR ── */}
       {esAdmin && (

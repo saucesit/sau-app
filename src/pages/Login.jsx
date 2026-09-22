@@ -100,12 +100,9 @@ export default function Login() {
         </div>
       </form>
 
-      {/* Link unirse */}
+      {/* Quien recibe una invitación entra por su link, no por acá */}
       <p className="text-zinc-700 text-xs mt-10">
-        ¿Código de invitación?{' '}
-        <a href="/unirse" className="text-emerald-600 font-semibold hover:text-emerald-400">
-          Unirse
-        </a>
+        ¿Te invitaron? Entrá por el link que te mandaron.
       </p>
 
     </div>

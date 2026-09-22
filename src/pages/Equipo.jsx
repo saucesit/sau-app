@@ -12,26 +12,39 @@ function ModalNuevoEmpleado({ empresaActivaId, onGuardado, onCerrar }) {
   const [nombre,    setNombre]    = useState('')
   const [apellido,  setApellido]  = useState('')
   const [email,     setEmail]     = useState('')
-  const [password,  setPassword]  = useState('')
   const [presetId,  setPresetId]  = useState('vendedor')
   const [guardando, setGuardando] = useState(false)
   const [error,     setError]     = useState(null)
+  const [link,      setLink]      = useState(null)
+  const [copiado,   setCopiado]   = useState(false)
 
   const permisos = tareasAPermisos(PRESETS.find(p => p.id === presetId)?.tareas || [])
 
   async function guardar(e) {
     e.preventDefault()
     if (!nombre.trim()) return setError('El nombre es obligatorio')
-    if (password.length < 6) return setError('La contraseña debe tener al menos 6 caracteres')
+    if (!email.trim()) return setError('Necesitamos su email para mandarle la invitación')
     setError(null); setGuardando(true)
 
-    const { data, error } = await supabase.functions.invoke('crear-empleado', {
-      body: { nombre, apellido, email, password, empresa_id: empresaActivaId, permisos, rol: 'empleado' }
+    // No creamos la cuenta ni le inventamos una contraseña: mandamos una
+    // invitación de un solo uso y la persona elige la suya.
+    const { data, error } = await supabase.functions.invoke('invitar', {
+      body: {
+        empresa_id: empresaActivaId,
+        nombre: [nombre.trim(), apellido.trim()].filter(Boolean).join(' '),
+        email, permisos, rol: 'empleado',
+      }
     })
 
     setGuardando(false)
-    if (error || !data?.ok) return setError(data?.error || 'No se pudo crear el empleado.')
-    onGuardado()
+    if (error || !data?.ok) return setError(data?.error || 'No se pudo generar la invitación.')
+    setLink(`${window.location.origin}/invitacion/${data.token}`)
+  }
+
+  function copiar() {
+    navigator.clipboard.writeText(link)
+    setCopiado(true)
+    setTimeout(() => setCopiado(false), 2000)
   }
 
   return (
@@ -40,9 +53,34 @@ function ModalNuevoEmpleado({ empresaActivaId, onGuardado, onCerrar }) {
         className="bg-white w-full max-w-[500px] rounded-t-[2rem] px-5 pt-5 pb-10 max-h-[90vh] overflow-y-auto"
       >
         <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mb-5" />
-        <h2 className="text-xl font-extrabold text-slate-800 mb-1">Nuevo empleado</h2>
-        <p className="text-sm text-slate-400 mb-5">Completá los datos y elegí su perfil de acceso</p>
+        <h2 className="text-xl font-extrabold text-slate-800 mb-1">Invitar a alguien</h2>
+        <p className="text-sm text-slate-400 mb-5">
+          Elegís qué va a poder hacer y le mandás el link. La contraseña la elige esa persona.
+        </p>
 
+        {link ? (
+          <div className="grid gap-3">
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl px-4 py-3.5">
+              <p className="text-xs text-emerald-700 font-bold uppercase tracking-widest mb-1.5">
+                Invitación lista
+              </p>
+              <code className="text-xs text-slate-600 break-all block leading-relaxed">{link}</code>
+            </div>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Mandale este link por WhatsApp. Sirve una sola vez y vence en 7 días.
+            </p>
+            <button onClick={copiar}
+              className="w-full py-4 rounded-3xl bg-indigo-600 text-white font-extrabold active:scale-95 transition-all"
+            >
+              {copiado ? '✓ Copiado' : 'Copiar link'}
+            </button>
+            <button onClick={onGuardado}
+              className="w-full py-3 rounded-3xl text-slate-500 font-bold"
+            >
+              Listo
+            </button>
+          </div>
+        ) : (
         <form onSubmit={guardar} className="grid gap-3">
           {/* Datos básicos */}
           <div className="grid grid-cols-2 gap-3">
@@ -57,10 +95,6 @@ function ModalNuevoEmpleado({ empresaActivaId, onGuardado, onCerrar }) {
           </div>
           <input type="email" placeholder="Email *" value={email}
             onChange={e => setEmail(e.target.value)} required
-            className="w-full px-4 py-3 rounded-2xl bg-slate-50 outline-none text-slate-800 placeholder:text-slate-300"
-          />
-          <input type="password" placeholder="Contraseña temporal (mín. 6 caracteres)" value={password}
-            onChange={e => setPassword(e.target.value)}
             className="w-full px-4 py-3 rounded-2xl bg-slate-50 outline-none text-slate-800 placeholder:text-slate-300"
           />
 
@@ -107,9 +141,10 @@ function ModalNuevoEmpleado({ empresaActivaId, onGuardado, onCerrar }) {
           <button type="submit" disabled={guardando}
             className="w-full py-4 rounded-3xl bg-indigo-600 text-white font-extrabold shadow-lg shadow-indigo-100 disabled:opacity-50 active:scale-95 transition-all"
           >
-            {guardando ? 'Creando cuenta…' : '✓ Crear empleado'}
+            {guardando ? 'Generando invitación…' : 'Generar invitación'}
           </button>
         </form>
+        )}
       </div>
     </div>
   )
@@ -191,11 +226,10 @@ function MiembroCard({ mem, onDesactivar, esUnoMismo }) {
 
 // ── Pantalla principal ────────────────────────────────────────────
 export default function Equipo() {
-  const { empresaActivaId, empresaActiva, user } = useAuth()
+  const { empresaActivaId, user } = useAuth()
   const [miembros, setMiembros] = useState([])
   const [cargando, setCargando] = useState(true)
   const [modal,    setModal]    = useState(false)
-  const [copiado,  setCopiado]  = useState(false)
 
   const cargar = useCallback(async () => {
     if (!empresaActivaId) return
@@ -218,13 +252,6 @@ export default function Equipo() {
     setMiembros(prev => prev.filter(m => m.id !== membresiaId))
   }
 
-  function copiarLink() {
-    const link = `${window.location.origin}/unirse?codigo=${empresaActiva?.codigo_invitacion}`
-    navigator.clipboard.writeText(link)
-    setCopiado(true)
-    setTimeout(() => setCopiado(false), 2000)
-  }
-
   return (
     <div className="grid gap-4">
 
@@ -232,23 +259,9 @@ export default function Equipo() {
       <button onClick={() => setModal(true)}
         className="w-full py-4 rounded-3xl bg-indigo-600 text-white font-extrabold text-base shadow-lg shadow-indigo-100 active:scale-95 transition-all flex items-center justify-center gap-2"
       >
-        <span className="text-xl">➕</span> Nuevo empleado
+        <span className="text-xl">➕</span> Invitar a alguien
       </button>
 
-      {/* Link de invitación */}
-      <div className="bg-white rounded-3xl p-4 shadow-sm flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs text-slate-400 font-semibold mb-0.5">Link de invitación</p>
-          <code className="text-xs text-slate-500 truncate block">
-            /unirse?codigo={empresaActiva?.codigo_invitacion}
-          </code>
-        </div>
-        <button onClick={copiarLink}
-          className="shrink-0 bg-indigo-50 text-indigo-600 font-bold text-xs px-3 py-2 rounded-2xl active:scale-95 transition-all"
-        >
-          {copiado ? '✓ Copiado' : 'Copiar'}
-        </button>
-      </div>
 
       {/* Lista */}
       <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest">

@@ -20,12 +20,10 @@ export default function ReservaPublica() {
 
   useEffect(() => {
     ;(async () => {
-      const { data } = await supabase
-        .from('empresa')
-        .select('nombre_fantasia')
-        .eq('id', empresaId)
-        .single()
-      setEmpresa(data || null)
+      // Por función y no por tabla: la empresa ya no es legible entera sin login,
+      // y acá solo hace falta el nombre para mostrárselo a quien completa.
+      const { data } = await supabase.rpc('empresa_nombre_publico', { p_empresa: empresaId })
+      setEmpresa(data ? { nombre_fantasia: data } : null)
       setCargando(false)
     })()
   }, [empresaId])
