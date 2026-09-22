@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../context/AuthContext'
 
 // ── Definición de tareas en lenguaje de negocio ───────────────────
 export const TAREAS = [
@@ -50,6 +51,7 @@ export const TAREAS = [
     titulo: 'Trabaja en el taller',
     descripcion: 'Ve los vehículos, marca su trabajo como realizado y suma observaciones. No ve montos',
     permisos: ['taller.ver', 'taller.trabajar'],
+    modulo: 'taller',
     colorActivo: 'bg-sky-500',
     colorFondo:  'bg-sky-50 border-sky-200',
     colorTexto:  'text-sky-700',
@@ -60,6 +62,7 @@ export const TAREAS = [
     titulo: 'Coordina el taller',
     descripcion: 'Da ingreso a vehículos y valida el paso de una etapa a la siguiente',
     permisos: ['taller.ver', 'taller.cargar', 'taller.validar'],
+    modulo: 'taller',
     colorActivo: 'bg-teal-600',
     colorFondo:  'bg-teal-50 border-teal-200',
     colorTexto:  'text-teal-700',
@@ -70,6 +73,7 @@ export const TAREAS = [
     titulo: 'Ve los montos del taller',
     descripcion: 'Carga y consulta lo que se factura a la compañía, la franquicia y el particular',
     permisos: ['taller.montos'],
+    modulo: 'taller',
     colorActivo: 'bg-amber-500',
     colorFondo:  'bg-amber-50 border-amber-200',
     colorTexto:  'text-amber-700',
@@ -93,10 +97,19 @@ export const PRESETS = [
   { id: 'administrativo', label: 'Administrativo', icon: '💼', tareas: ['compras', 'reportes'] },
   // Roles de taller de chapa y pintura: el operario nunca valida su propio trabajo
   // ni ve montos; el coordinador valida pero tampoco ve precios.
-  { id: 'operario',       label: 'Operario',      icon: '🔧', tareas: ['taller_trabajo'] },
-  { id: 'coordinador',    label: 'Coordinador',   icon: '✅', tareas: ['taller_trabajo', 'taller_coordina'] },
-  { id: 'admin_taller',   label: 'Administración', icon: '💲', tareas: ['taller_trabajo', 'taller_coordina', 'taller_montos', 'reportes'] },
+  { id: 'operario',       label: 'Operario',      icon: '🔧', modulo: 'taller', tareas: ['taller_trabajo'] },
+  { id: 'coordinador',    label: 'Coordinador',   icon: '✅', modulo: 'taller', tareas: ['taller_trabajo', 'taller_coordina'] },
+  { id: 'admin_taller',   label: 'Administración', icon: '💲', modulo: 'taller', tareas: ['taller_trabajo', 'taller_coordina', 'taller_montos', 'reportes'] },
 ]
+
+// Una tarea sin `modulo` se ve siempre; las que lo tienen aparecen solo si la
+// empresa tiene ese módulo activo — así al kiosco no le figuran las del taller.
+export function tareasVisibles(tieneModulo) {
+  return TAREAS.filter(t => !t.modulo || tieneModulo(t.modulo))
+}
+export function presetsVisibles(tieneModulo) {
+  return PRESETS.filter(p => !p.modulo || tieneModulo(p.modulo))
+}
 
 // ── Helpers ───────────────────────────────────────────────────────
 export function permisosATareas(permisos = []) {
@@ -121,6 +134,7 @@ function detectarPreset(selectedIds) {
 export default function EquipoTareas() {
   const { membresiaId } = useParams()
   const navigate = useNavigate()
+  const { tieneModulo } = useAuth()
 
   const [mem,       setMem]       = useState(null)
   const [selected,  setSelected]  = useState([])
@@ -232,7 +246,7 @@ export default function EquipoTareas() {
           Perfiles rápidos
         </p>
         <div className="flex gap-2 flex-wrap">
-          {PRESETS.map(p => (
+          {presetsVisibles(tieneModulo).map(p => (
             <button key={p.id} onClick={() => aplicarPreset(p.id)}
               className={`flex items-center gap-1.5 px-4 py-2.5 rounded-2xl font-bold text-sm transition-all active:scale-95 ${
                 presetActual === p.id
@@ -257,7 +271,7 @@ export default function EquipoTareas() {
           ¿Qué hace {mem.profile?.nombre || 'este empleado'} en el negocio?
         </p>
         <div className="grid gap-3">
-          {TAREAS.map(t => {
+          {tareasVisibles(tieneModulo).map(t => {
             const activo = selected.includes(t.id)
             return (
               <button key={t.id} onClick={() => toggleTarea(t.id)}

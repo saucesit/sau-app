@@ -2,12 +2,13 @@ import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { TAREAS, PRESETS, permisosATareas, tareasAPermisos } from './EquipoTareas'
+import { TAREAS, PRESETS, permisosATareas, tareasAPermisos, tareasVisibles, presetsVisibles } from './EquipoTareas'
 
 const ROLES_LABEL = { empleado: 'Empleado', dueno: 'Dueño', contadora: 'Contadora', admin: 'Admin' }
 
 // ── Modal: Nuevo empleado ─────────────────────────────────────────
 function ModalNuevoEmpleado({ empresaActivaId, onGuardado, onCerrar }) {
+  const { tieneModulo } = useAuth()
   const [nombre,    setNombre]    = useState('')
   const [apellido,  setApellido]  = useState('')
   const [email,     setEmail]     = useState('')
@@ -69,7 +70,7 @@ function ModalNuevoEmpleado({ empresaActivaId, onGuardado, onCerrar }) {
               ¿Qué hace en el negocio?
             </p>
             <div className="grid gap-2">
-              {PRESETS.map(p => {
+              {presetsVisibles(tieneModulo).map(p => {
                 const activo = presetId === p.id
                 const tareasTitulos = p.tareas
                   .map(tid => TAREAS.find(t => t.id === tid)?.titulo || tid)
@@ -117,6 +118,7 @@ function ModalNuevoEmpleado({ empresaActivaId, onGuardado, onCerrar }) {
 // ── Card de miembro ───────────────────────────────────────────────
 function MiembroCard({ mem, onDesactivar, esUnoMismo }) {
   const navigate = useNavigate()
+  const { tieneModulo } = useAuth()
   const [expandido, setExpandido] = useState(false)
 
   const tareasActivas = permisosATareas(mem.permisos || [])
@@ -151,7 +153,7 @@ function MiembroCard({ mem, onDesactivar, esUnoMismo }) {
         <div className="px-5 pb-5 border-t border-slate-50">
           {/* Tareas activas como chips */}
           <div className="flex flex-wrap gap-2 mt-4 mb-4">
-            {TAREAS.map(t => {
+            {tareasVisibles(tieneModulo).map(t => {
               const activo = tareasActivas.includes(t.id)
               return (
                 <span key={t.id}
