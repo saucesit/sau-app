@@ -189,7 +189,7 @@ La base tiene **32 tablas** en `public`, **todas con RLS habilitada**, y 3 vista
 
 ## 6. Migraciones
 
-**29 migraciones, de `0001` a `0029`, todas aplicadas en producción.** No hay ninguna pendiente.
+**30 migraciones, de `0001` a `0030`, todas aplicadas en producción.** No hay ninguna pendiente.
 
 Las más relevantes para esta revisión:
 
@@ -205,6 +205,7 @@ Las más relevantes para esta revisión:
 | `0027_taller_especialidad.sql` | Primera versión de la especialidad del operario (una sola etapa) |
 | `0028_taller_etapas_habilitadas.sql` | Etapas habilitadas como lista, fin del modo permisivo, y cobros solo por función |
 | `0029_taller_marcado_idempotente.sql` | Un trabajo no se puede marcar dos veces |
+| `0030_tema_taller.sql` | `empresa.tema_taller`: qué interfaz del taller ve cada cliente |
 
 ### Advertencia importante sobre el proceso
 
@@ -540,9 +541,32 @@ confirmar si esa combinación rompe alguna pantalla de inicio.
 | 4 | Definir campos obligatorios con el cliente | El documento funcional pide kilometraje y perito obligatorios, pero su planilla real no tiene kilometraje y el perito se carga al entregar |
 | 5 | Decidir la identidad visual | El prototipo del cliente es claro con azul y dorado; SAU es oscuro con verde |
 | 6 | Conectar el número de WhatsApp del cliente del agente | Trabado en verificación de negocio en Meta |
-| 7 | Dividir el bundle | 1,25 MB en un solo chunk |
-| 8 | Renombrar el proyecto en `package.json` | Sigue diciendo `kiosco-carlitos` |
-| 9 | Tests del resto de SAU | El taller tiene 41; los demás módulos ninguno |
+| 7 | **Deuda técnica: el reset global vive fuera de las capas de CSS** | Ver abajo |
+| 8 | Dividir el bundle | 1,25 MB en un solo chunk |
+| 9 | Renombrar el proyecto en `package.json` | Sigue diciendo `kiosco-carlitos` |
+| 10 | Tests del resto de SAU | El taller tiene 55; los demás módulos ninguno |
+
+### Deuda técnica: el reset global vive fuera de las capas de CSS
+
+`src/index.css` hace `@import "tailwindcss"` y después declara, **sin capa**:
+
+```css
+* { box-sizing: border-box; margin: 0; padding: 0; }
+```
+
+En Tailwind 4 las utilidades viven en `@layer utilities`, y **el CSS sin capa le gana a cualquier
+capa sin importar la especificidad**. En el servidor de desarrollo eso anula todas las utilidades de
+padding y margen: SAU se ve sin espaciado, con los textos pegados a los bordes.
+
+**En producción no pasa**, porque el build aplana las capas y ahí `.px-4` le gana a `*` por
+especificidad. Verificado en el CSS publicado: no queda ninguna `@layer` y el reset cae al final.
+
+O sea que el usuario final lo ve bien, pero **desarrollar sobre SAU es engañoso**: cualquiera que
+levante el proyecto va a creer que está roto, o peor, va a "arreglar" a mano espaciados que en
+producción ya estaban bien. El módulo Taller no lo sufre porque su CSS no usa capas.
+
+Se resuelve envolviendo ese reset en `@layer base`. Es una línea, pero toca un archivo global que
+afecta a todos los clientes, así que merece su propia revisión y no colarse dentro de otro cambio.
 
 **Resueltos desde la primera versión de este documento:** las policies de storage ya verifican
 pertenencia a la empresa (§8), el flujo ya no se puede saltear con `UPDATE` directo (§7), y la
