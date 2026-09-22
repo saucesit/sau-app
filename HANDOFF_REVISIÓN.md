@@ -189,7 +189,7 @@ La base tiene **32 tablas** en `public`, **todas con RLS habilitada**, y 3 vista
 
 ## 6. Migraciones
 
-**27 migraciones, de `0001` a `0027`, todas aplicadas en producción.** No hay ninguna pendiente.
+**28 migraciones, de `0001` a `0028`, todas aplicadas en producción.** No hay ninguna pendiente.
 
 Las más relevantes para esta revisión:
 
@@ -202,7 +202,8 @@ Las más relevantes para esta revisión:
 | `0024_reserva.sql` | Reservas públicas (transporte) |
 | `0025_taller.sql` | **Módulo taller completo** |
 | `0026_taller_seguridad.sql` | **Flujo por funciones del servidor**, trigger guardián, montos y bitácora protegidos, storage aislado por empresa |
-| `0027_taller_especialidad.sql` | Especialidad del operario: solo marca trabajo en la etapa de su oficio |
+| `0027_taller_especialidad.sql` | Primera versión de la especialidad del operario (una sola etapa) |
+| `0028_taller_etapas_habilitadas.sql` | Etapas habilitadas como lista, fin del modo permisivo, y cobros solo por función |
 
 ### Advertencia importante sobre el proceso
 
@@ -290,12 +291,26 @@ El `UPDATE` directo queda para corregir datos del vehículo. Un **trigger guardi
 `excepcion`, `excepcion_desde`, `fecha_entrega` o `empresa_id` que no venga de esas funciones, que
 levantan una bandera de sesión antes de escribir.
 
-### Especialidad del operario (migración 0027)
+### Etapas habilitadas por operario (migraciones 0027 y 0028)
 
-`membresia.taller_especialidad` limita a cada operario a la etapa de su oficio: el chapista no puede
-marcar como terminado un auto que está en Pintura. **`NULL` significa sin restricción**, para no
-dejar a nadie sin poder trabajar el día que se publica — conviene cargarla a todos. Se asigna desde
-`src/pages/EquipoTareas.jsx`.
+`membresia.taller_etapas` es la lista de etapas en las que cada persona puede marcar trabajo
+realizado: el chapista no puede dar por terminado un auto que está en Pintura, y quien hace chapa y
+preparación tiene las dos habilitadas. Se asigna desde `src/pages/EquipoTareas.jsx`.
+
+**La lista vacía no significa "todas": significa ninguna.** Quien tiene `taller.trabajar` y no tiene
+etapas cargadas recibe *"Todavía no tenés etapas habilitadas"* al intentar marcar. El permiso solo
+no alcanza; hay que configurar el oficio. Por eso, al poner esto en producción **hay que cargarle
+las etapas a cada persona del taller antes de que empiecen a usarlo**.
+
+La única excepción es el personal de SAU (`es_contadora_o_admin()`), que no tiene membresía en la
+empresa del cliente y necesita poder dar soporte.
+
+### Los cobros solo se registran por función (migración 0028)
+
+Un trigger sobre `vehiculo_monto` rechaza cualquier cambio directo a `cobro_compania`,
+`cobro_franquicia` o `cobro_particular`. Solo `taller_registrar_cobro` puede tocarlos, lo que
+garantiza que **nunca quede un monto dado por cobrado sin su movimiento en la bitácora**. Los montos
+en sí (`monto_*`) se siguen editando normalmente por API, con permiso `taller.montos`.
 
 ### Triggers y funciones propias
 
@@ -406,18 +421,18 @@ Excel.
 
 ### Suite de pruebas
 
-Hay **41 pruebas automatizadas** que corren con usuarios reales de **dos empresas distintas** y los
+Hay **51 pruebas automatizadas** que corren con usuarios reales de **dos empresas distintas** y los
 cuatro roles, autenticándose de verdad contra la API pública. Prueban las policies y las funciones,
 no la interfaz:
 
 ```bash
 supabase db query --linked -f scripts/seed-pruebas-taller.sql   # crea el banco de pruebas
-node scripts/pruebas-taller.mjs                                 # 41 pasan, 0 fallan
+node scripts/pruebas-taller.mjs                                 # 51 pasan, 0 fallan
 ```
 
-Cubren aislamiento entre empresas, montos, flujo de etapas, excepciones, bitácora, storage, entrega
-y especialidad. El seed es repetible y **no toca los datos demo**: trabaja sobre dos empresas
-`ZZ PRUEBA` creadas aparte.
+Cubren aislamiento entre empresas, montos, flujo de etapas, excepciones, bitácora, storage, entrega,
+etapas habilitadas por operario y registro de cobros. El seed es repetible y **no toca los datos
+demo**: trabaja sobre dos empresas `ZZ PRUEBA` creadas aparte.
 
 ### Sin probar
 

@@ -139,7 +139,7 @@ export default function EquipoTareas() {
 
   const [mem,       setMem]       = useState(null)
   const [selected,  setSelected]  = useState([])
-  const [especialidad, setEspecialidad] = useState('')
+  const [etapas,    setEtapas]    = useState([])
   const [cargando,  setCargando]  = useState(true)
   const [guardando, setGuardando] = useState(false)
   const [ok,        setOk]        = useState(false)
@@ -150,13 +150,13 @@ export default function EquipoTareas() {
     ;(async () => {
       const { data } = await supabase
         .from('membresia')
-        .select('id, permisos, rol, taller_especialidad, profile:usuario_id(nombre, apellido)')
+        .select('id, permisos, rol, taller_etapas, profile:usuario_id(nombre, apellido)')
         .eq('id', membresiaId)
         .single()
       if (data) {
         setMem(data)
         setSelected(permisosATareas(data.permisos || []))
-        setEspecialidad(data.taller_especialidad || '')
+        setEtapas(data.taller_etapas || [])
       }
       setCargando(false)
     })()
@@ -181,8 +181,8 @@ export default function EquipoTareas() {
       .from('membresia')
       .update({
         permisos: nuevosPermisos,
-        // Si deja de trabajar en el taller, la especialidad se limpia.
-        taller_especialidad: selected.includes('taller_trabajo') ? (especialidad || null) : null,
+        // Si deja de trabajar en el taller, se limpian las etapas.
+        taller_etapas: selected.includes('taller_trabajo') ? etapas : [],
       })
       .eq('id', membresiaId)
     setGuardando(false)
@@ -313,17 +313,20 @@ export default function EquipoTareas() {
         </div>
       </div>
 
-      {/* Especialidad: solo puede marcar trabajo en la etapa de su oficio */}
+      {/* Etapas habilitadas: solo puede marcar trabajo en las de su oficio */}
       {tieneModulo('taller') && selected.includes('taller_trabajo') && (
         <div>
           <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest mb-3">
-            ¿En qué trabaja dentro del taller?
+            ¿En qué etapas trabaja?
           </p>
           <div className="grid grid-cols-2 gap-2">
-            {[{ id: '', label: 'Todas las etapas' }, ...ETAPAS_CON_OPERARIO].map(e => {
-              const activo = especialidad === e.id
+            {ETAPAS_CON_OPERARIO.map(e => {
+              const activo = etapas.includes(e.id)
               return (
-                <button key={e.id || 'todas'} onClick={() => setEspecialidad(e.id)}
+                <button key={e.id}
+                  onClick={() => setEtapas(prev =>
+                    prev.includes(e.id) ? prev.filter(x => x !== e.id) : [...prev, e.id]
+                  )}
                   className={`px-4 py-3 rounded-2xl font-bold text-sm transition-all active:scale-95 ${
                     activo ? 'bg-sky-500 text-white' : 'bg-white text-slate-600 shadow-sm'
                   }`}
@@ -333,11 +336,16 @@ export default function EquipoTareas() {
               )
             })}
           </div>
-          <p className="text-xs text-slate-400 mt-2.5 leading-snug">
-            {especialidad
-              ? `Solo va a poder marcar trabajo realizado en ${ETAPAS_CON_OPERARIO.find(e => e.id === especialidad)?.label}.`
-              : 'Sin especialidad va a poder marcar trabajo en cualquier etapa. Conviene elegir una.'}
-          </p>
+          {etapas.length === 0 ? (
+            <p className="text-xs text-red-500 font-semibold mt-2.5 leading-snug bg-red-50 rounded-2xl px-4 py-3">
+              Sin etapas marcadas no va a poder dar por realizado ningún trabajo. Elegí al menos una.
+            </p>
+          ) : (
+            <p className="text-xs text-slate-400 mt-2.5 leading-snug">
+              Va a poder marcar trabajo realizado solo en{' '}
+              {etapas.map(id => ETAPAS_CON_OPERARIO.find(e => e.id === id)?.label).join(' y ')}.
+            </p>
+          )}
         </div>
       )}
 

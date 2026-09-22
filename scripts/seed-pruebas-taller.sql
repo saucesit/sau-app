@@ -18,13 +18,15 @@ begin
   -- Usuarios, uno por rol
   for r in
     select * from (values
-      ('taller-a-operario@prueba.sau',    'Op A',    v_a, 'empleado', array['taller.ver','taller.trabajar'], null),
-      ('taller-a-pintor@prueba.sau',      'Pintor A', v_a, 'empleado', array['taller.ver','taller.trabajar'], 'pintura'),
-      ('taller-a-coordinador@prueba.sau', 'Coord A', v_a, 'empleado', array['taller.ver','taller.trabajar','taller.cargar','taller.validar'], null),
-      ('taller-a-admin@prueba.sau',       'Admin A', v_a, 'empleado', array['taller.ver','taller.cargar','taller.validar','taller.montos'], null),
-      ('taller-a-completo@prueba.sau',    'Full A',  v_a, 'dueno',    array['taller.ver','taller.trabajar','taller.cargar','taller.validar','taller.montos','empresa.admin'], null),
-      ('taller-b-admin@prueba.sau',       'Admin B', v_b, 'empleado', array['taller.ver','taller.cargar','taller.validar','taller.montos'], null)
-    ) as t(email, nombre, empresa, rol, permisos, especialidad)
+      ('taller-a-operario@prueba.sau',    'Op A',      v_a, 'empleado', array['taller.ver','taller.trabajar'], array['chapa','preparacion','pintura','pre_entrega']),
+      ('taller-a-pintor@prueba.sau',      'Pintor A',  v_a, 'empleado', array['taller.ver','taller.trabajar'], array['pintura']),
+      ('taller-a-mixto@prueba.sau',       'Mixto A',   v_a, 'empleado', array['taller.ver','taller.trabajar'], array['chapa','preparacion']),
+      ('taller-a-sinetapas@prueba.sau',   'SinEtapas', v_a, 'empleado', array['taller.ver','taller.trabajar'], array[]::text[]),
+      ('taller-a-coordinador@prueba.sau', 'Coord A',   v_a, 'empleado', array['taller.ver','taller.trabajar','taller.cargar','taller.validar'], array['chapa','preparacion','pintura','pre_entrega']),
+      ('taller-a-admin@prueba.sau',       'Admin A',   v_a, 'empleado', array['taller.ver','taller.cargar','taller.validar','taller.montos'], array[]::text[]),
+      ('taller-a-completo@prueba.sau',    'Full A',    v_a, 'dueno',    array['taller.ver','taller.trabajar','taller.cargar','taller.validar','taller.montos','empresa.admin'], array['chapa','preparacion','pintura','pre_entrega']),
+      ('taller-b-admin@prueba.sau',       'Admin B',   v_b, 'empleado', array['taller.ver','taller.cargar','taller.validar','taller.montos'], array[]::text[])
+    ) as t(email, nombre, empresa, rol, permisos, etapas)
   loop
     select id into v_uid from auth.users where email = r.email;
 
@@ -50,7 +52,7 @@ begin
     on conflict do nothing;
 
     update membresia
-       set permisos = r.permisos, rol = r.rol::rol_empresa, taller_especialidad = r.especialidad
+       set permisos = r.permisos, rol = r.rol::rol_empresa, taller_etapas = r.etapas
      where usuario_id = v_uid and empresa_id = r.empresa;
   end loop;
 

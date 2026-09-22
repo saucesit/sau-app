@@ -82,6 +82,8 @@ const users = {}
 for (const [k, mail] of Object.entries({
   operario:    'taller-a-operario@prueba.sau',
   pintor:      'taller-a-pintor@prueba.sau',
+  mixto:       'taller-a-mixto@prueba.sau',
+  sinEtapas:   'taller-a-sinetapas@prueba.sau',
   coordinador: 'taller-a-coordinador@prueba.sau',
   admin:       'taller-a-admin@prueba.sau',
   completo:    'taller-a-completo@prueba.sau',
@@ -260,8 +262,8 @@ console.log('\n7. ENTREGA')
   check('un vehículo entregado ya no avanza', !d3.ok)
 }
 
-// ── 8. Especialidad del operario ─────────────────────────────────
-console.log('\n8. ESPECIALIDAD DEL OPERARIO')
+// ── 8. Etapas habilitadas por operario ───────────────────────────
+console.log('\n8. ETAPAS HABILITADAS POR OPERARIO')
 {
   // Vehículo nuevo, cargado por el coordinador (prueba también el alta)
   const alta = await rest(users.coordinador, 'vehiculo', {
@@ -276,17 +278,27 @@ console.log('\n8. ESPECIALIDAD DEL OPERARIO')
   check('coordinador puede dar de alta un vehículo', alta.ok, JSON.stringify(alta.body))
   const V2 = alta.body?.[0]?.id
 
+  // El vehículo arranca en chapa
+  const s1 = await rpc(users.sinEtapas, 'taller_marcar_trabajo_hecho', { p_vehiculo: V2 })
+  check('sin etapas habilitadas no puede marcar trabajo', !s1.ok)
+  check('y el mensaje le dice que falta configurar su oficio',
+        /etapas habilitadas/i.test(s1.body?.message || ''), s1.body?.message)
+
   const p1 = await rpc(users.pintor, 'taller_marcar_trabajo_hecho', { p_vehiculo: V2 })
-  check('el pintor no puede marcar trabajo en chapa', !p1.ok,
-        JSON.stringify(p1.body?.message || p1.body))
+  check('el pintor no puede marcar trabajo en chapa', !p1.ok)
 
-  const o1 = await rpc(users.operario, 'taller_marcar_trabajo_hecho', { p_vehiculo: V2 })
-  check('el operario sin especialidad sí puede', o1.ok)
+  const m1 = await rpc(users.mixto, 'taller_marcar_trabajo_hecho', { p_vehiculo: V2 })
+  check('habilitado en dos etapas puede marcar en chapa', m1.ok, JSON.stringify(m1.body))
 
-  // Lo llevamos hasta pintura para probar el caso inverso
   await rpc(users.coordinador, 'taller_validar_avance', { p_vehiculo: V2 })   // → preparacion
-  await rpc(users.operario,    'taller_marcar_trabajo_hecho', { p_vehiculo: V2 })
+
+  const m2 = await rpc(users.mixto, 'taller_marcar_trabajo_hecho', { p_vehiculo: V2 })
+  check('y también en preparación, su segunda etapa', m2.ok, JSON.stringify(m2.body))
+
   await rpc(users.coordinador, 'taller_validar_avance', { p_vehiculo: V2 })   // → pintura
+
+  const m3 = await rpc(users.mixto, 'taller_marcar_trabajo_hecho', { p_vehiculo: V2 })
+  check('pero no en pintura, que no tiene habilitada', !m3.ok)
 
   const p2 = await rpc(users.pintor, 'taller_marcar_trabajo_hecho', { p_vehiculo: V2 })
   check('el pintor sí puede marcar trabajo en pintura', p2.ok, JSON.stringify(p2.body))
@@ -294,6 +306,38 @@ console.log('\n8. ESPECIALIDAD DEL OPERARIO')
   const { body: fin } = await rest(users.admin, `vehiculo?id=eq.${V2}&select=etapa,patente`)
   check('el vehículo quedó en pintura', fin[0].etapa === 'pintura', fin[0].etapa)
   console.log(`  (vehículo de prueba creado: ${fin[0].patente})`)
+}
+
+// ── 9. Cobros solo por la función ────────────────────────────────
+console.log('\n9. COBROS SOLO POR LA FUNCIÓN')
+{
+  const directo = await rest(users.admin, `vehiculo_monto?vehiculo_id=eq.${VEH}`, {
+    method: 'PATCH', headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ cobro_compania: true }),
+  })
+  check('no se puede tildar un cobro por API directa', !directo.ok, `status ${directo.status}`)
+
+  const { body: antes } = await rest(users.admin, `vehiculo_monto?vehiculo_id=eq.${VEH}&select=cobro_compania`)
+  check('el cobro sigue sin tildarse', antes[0].cobro_compania === false)
+
+  const viaFn = await rpc(users.admin, 'taller_registrar_cobro',
+                          { p_vehiculo: VEH, p_campo: 'cobro_compania', p_valor: true })
+  check('por la función sí se registra', viaFn.ok, JSON.stringify(viaFn.body))
+
+  const { body: dsp } = await rest(users.admin, `vehiculo_monto?vehiculo_id=eq.${VEH}&select=cobro_compania`)
+  check('el cobro quedó tildado', dsp[0].cobro_compania === true)
+
+  const { body: ev } = await rest(users.admin,
+    `vehiculo_evento?vehiculo_id=eq.${VEH}&tipo=eq.cobro&select=texto&order=created_at.desc&limit=1`)
+  check('y dejó el movimiento en la bitácora',
+        /Orden de compañía facturada: validado/.test(ev[0]?.texto || ''), ev[0]?.texto)
+
+  // Los montos en sí se siguen pudiendo editar
+  const monto = await rest(users.admin, `vehiculo_monto?vehiculo_id=eq.${VEH}`, {
+    method: 'PATCH', headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ monto_compania: 123456 }),
+  })
+  check('los montos sí se editan por API', monto.ok, `status ${monto.status}`)
 }
 
 console.log(`\n${'='.repeat(52)}`)
