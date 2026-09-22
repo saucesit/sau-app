@@ -18,6 +18,8 @@ const TITULOS = {
   '/perfil':              'Mi negocio',
   '/presupuestos':        'Presupuestos',
   '/presupuestos/nuevo':  'Nuevo presupuesto',
+  '/taller':              'Taller',
+  '/taller/nuevo':        'Ingresar vehículo',
 }
 
 // Todas las pestañas posibles.
@@ -33,6 +35,7 @@ const TODAS_LAS_TABS = [
   { to: '/stock',     icon: '📦', label: 'Stock',     end: false, permiso: 'ventas.ver',        modulo: 'stock' },
   { to: '/fiado',         icon: '📒', label: 'Fiado',        end: false, permiso: 'ventas.crear',     modulo: 'fiado'        },
   { to: '/presupuestos', icon: '📄', label: 'Presupuestos', end: false, permiso: 'ventas.crear',  modulo: 'presupuestos' },
+  { to: '/taller',       icon: '🔧', label: 'Taller',       end: false, permiso: 'taller.ver',      modulo: 'taller' },
   { to: '/contadora',    icon: '📊', label: 'Clientes',     end: false, permiso: 'contadora.panel', modulo: null },
   { to: '/importar',  icon: '🔄', label: 'Importar',  end: false, permiso: 'empresa.admin',     modulo: ['ventas', 'stock'] },
 ]
@@ -80,10 +83,12 @@ export default function Layout() {
   const esDetalleCliente  = location.pathname.startsWith('/contadora/') && location.pathname !== '/contadora'
   const esDetalleTareas   = location.pathname.startsWith('/equipo/tareas/')
   const esDetallePresup   = /^\/presupuestos\/[^/]+$/.test(location.pathname) && location.pathname !== '/presupuestos/nuevo'
-  const conVolver         = RUTAS_CON_VOLVER.includes(location.pathname) || esDetalleCliente || esDetalleTareas || esDetallePresup || location.pathname === '/perfil' || location.pathname === '/presupuestos/nuevo'
-  const volverA           = esDetalleCliente ? '/contadora' : esDetalleTareas ? '/equipo' : esDetallePresup ? '/presupuestos' : location.pathname === '/presupuestos/nuevo' ? '/presupuestos' : '/'
-  const labelVolver       = esDetalleCliente ? '← Clientes' : esDetalleTareas ? '← Equipo' : (esDetallePresup || location.pathname === '/presupuestos/nuevo') ? '← Presupuestos' : '← Inicio'
-  const titulo            = TITULOS[location.pathname] || (esDetalleCliente ? 'Detalle cliente' : esDetalleTareas ? 'Configurar tareas' : esDetallePresup ? 'Presupuesto' : '')
+  const esDetalleVehiculo = /^\/taller\/[^/]+$/.test(location.pathname) && location.pathname !== '/taller/nuevo'
+  const esTaller          = esDetalleVehiculo || location.pathname === '/taller/nuevo'
+  const conVolver         = RUTAS_CON_VOLVER.includes(location.pathname) || esDetalleCliente || esDetalleTareas || esDetallePresup || esTaller || location.pathname === '/perfil' || location.pathname === '/presupuestos/nuevo'
+  const volverA           = esDetalleCliente ? '/contadora' : esDetalleTareas ? '/equipo' : esDetallePresup ? '/presupuestos' : esTaller ? '/taller' : location.pathname === '/presupuestos/nuevo' ? '/presupuestos' : '/'
+  const labelVolver       = esDetalleCliente ? '← Clientes' : esDetalleTareas ? '← Equipo' : esTaller ? '← Taller' : (esDetallePresup || location.pathname === '/presupuestos/nuevo') ? '← Presupuestos' : '← Inicio'
+  const titulo            = TITULOS[location.pathname] || (esDetalleCliente ? 'Detalle cliente' : esDetalleTareas ? 'Configurar tareas' : esDetallePresup ? 'Presupuesto' : esDetalleVehiculo ? 'Vehículo' : '')
 
   return (
     <div className="max-w-[500px] mx-auto min-h-screen bg-zinc-950 pb-24">

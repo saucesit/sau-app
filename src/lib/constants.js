@@ -47,6 +47,7 @@ export const TODOS_PERMISOS = [
   'compras.crear','compras.ver',
   'reportes.ver',
   'empresa.admin','empresa.rrhh',
+  'taller.ver','taller.cargar','taller.trabajar','taller.validar','taller.montos',
 ]
 
 // Permisos base para empleado que se une por invitación

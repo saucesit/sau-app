@@ -98,6 +98,9 @@ serve(async (req) => {
         'fiado.ver',  'fiado.crear',
         'equipo.ver',
         'empresa.admin',
+        // El dueño arranca con todo habilitado: igual la pestaña solo aparece
+        // si la empresa tiene el módulo activo.
+        'taller.ver', 'taller.cargar', 'taller.trabajar', 'taller.validar', 'taller.montos',
       ],
     })
     if (memErr) throw memErr

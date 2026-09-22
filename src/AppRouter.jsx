@@ -31,6 +31,9 @@ import PedidoPublico from './pages/PedidoPublico'
 import ReservaPublica from './pages/ReservaPublica'
 import PlantillasAdmin from './pages/PlantillasAdmin'
 import PresupuestoEditar from './pages/PresupuestoEditar'
+import Taller from './pages/Taller'
+import TallerNuevo from './pages/TallerNuevo'
+import TallerVehiculo from './pages/TallerVehiculo'
 
 // Elige el formulario de presupuesto según el modo de la empresa
 function PresupuestoNuevoSwitch() {
@@ -145,6 +148,9 @@ export default function AppRouter() {
             <Route path="/presupuestos/plantillas" element={<PlantillasAdmin />} />
             <Route path="/presupuestos/:id/editar" element={<PresupuestoEditar />} />
             <Route path="/presupuestos/:id" element={<PresupuestoVer />} />
+            <Route path="/taller" element={<Taller />} />
+            <Route path="/taller/nuevo" element={<TallerNuevo />} />
+            <Route path="/taller/:id" element={<TallerVehiculo />} />
             <Route path="/equipo/tareas/:membresiaId" element={<EquipoTareas />} />
             <Route path="/contadora" element={<Contadora />} />
             <Route path="/contadora/:empresaId" element={<ContadoraEmpresa />} />

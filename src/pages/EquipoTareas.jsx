@@ -45,6 +45,36 @@ export const TAREAS = [
     colorTexto:  'text-violet-700',
   },
   {
+    id: 'taller_trabajo',
+    icon: '🔧',
+    titulo: 'Trabaja en el taller',
+    descripcion: 'Ve los vehículos, marca su trabajo como realizado y suma observaciones. No ve montos',
+    permisos: ['taller.ver', 'taller.trabajar'],
+    colorActivo: 'bg-sky-500',
+    colorFondo:  'bg-sky-50 border-sky-200',
+    colorTexto:  'text-sky-700',
+  },
+  {
+    id: 'taller_coordina',
+    icon: '✅',
+    titulo: 'Coordina el taller',
+    descripcion: 'Da ingreso a vehículos y valida el paso de una etapa a la siguiente',
+    permisos: ['taller.ver', 'taller.cargar', 'taller.validar'],
+    colorActivo: 'bg-teal-600',
+    colorFondo:  'bg-teal-50 border-teal-200',
+    colorTexto:  'text-teal-700',
+  },
+  {
+    id: 'taller_montos',
+    icon: '💲',
+    titulo: 'Ve los montos del taller',
+    descripcion: 'Carga y consulta lo que se factura a la compañía, la franquicia y el particular',
+    permisos: ['taller.montos'],
+    colorActivo: 'bg-amber-500',
+    colorFondo:  'bg-amber-50 border-amber-200',
+    colorTexto:  'text-amber-700',
+  },
+  {
     id: 'equipo',
     icon: '👥',
     titulo: 'Gestiona el equipo',
@@ -61,6 +91,11 @@ export const PRESETS = [
   { id: 'vendedor',       label: 'Vendedor',      icon: '🛒', tareas: ['ventas', 'caja'] },
   { id: 'encargado',      label: 'Encargado',     icon: '⭐', tareas: ['ventas', 'caja', 'compras', 'reportes'] },
   { id: 'administrativo', label: 'Administrativo', icon: '💼', tareas: ['compras', 'reportes'] },
+  // Roles de taller de chapa y pintura: el operario nunca valida su propio trabajo
+  // ni ve montos; el coordinador valida pero tampoco ve precios.
+  { id: 'operario',       label: 'Operario',      icon: '🔧', tareas: ['taller_trabajo'] },
+  { id: 'coordinador',    label: 'Coordinador',   icon: '✅', tareas: ['taller_trabajo', 'taller_coordina'] },
+  { id: 'admin_taller',   label: 'Administración', icon: '💲', tareas: ['taller_trabajo', 'taller_coordina', 'taller_montos', 'reportes'] },
 ]
 
 // ── Helpers ───────────────────────────────────────────────────────

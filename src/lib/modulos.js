@@ -66,13 +66,22 @@ export const MODULOS = [
     descripcion: 'Un asistente IA con nombre propio que atiende a tus clientes por WhatsApp y opera en SAU',
     nucleo:      false,
   },
+  {
+    id:          'taller',
+    icon:        '🔧',
+    titulo:      'Taller',
+    descripcion: 'Seguimiento de vehículos por etapas con validación de avance, fotos y control de facturación',
+    nucleo:      false,
+  },
 ]
 
 /**
  * IDs de módulos que vienen activos por defecto al crear una empresa.
- * El agente es un módulo premium opt-in: NO viene por defecto.
+ * Agente y taller son opt-in: el agente porque es premium, el taller
+ * porque solo sirve a un rubro puntual.
  */
-export const MODULOS_DEFAULT = MODULOS.filter(m => m.id !== 'agente').map(m => m.id)
+const OPT_IN = ['agente', 'taller']
+export const MODULOS_DEFAULT = MODULOS.filter(m => !OPT_IN.includes(m.id)).map(m => m.id)
 
 /** Devuelve el objeto de módulo por ID */
 export function getModulo(id) {
