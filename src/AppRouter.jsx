@@ -32,12 +32,19 @@ import PedidoPublico from './pages/PedidoPublico'
 import ReservaPublica from './pages/ReservaPublica'
 import PlantillasAdmin from './pages/PlantillasAdmin'
 import PresupuestoEditar from './pages/PresupuestoEditar'
-// El taller tiene su propio armazón e identidad visual, y se carga aparte:
-// los clientes que no tienen el módulo no descargan nada de esto.
-const TallerLayout = lazy(() => import('./pages/taller/TallerLayout'))
+import { temaTaller, TEMA_CONTROL_BOARD } from './lib/temaTaller'
+
+// La pizarra de control tiene su propio armazón e identidad visual, y se carga
+// aparte: los clientes que no la usan no descargan ni su código ni su CSS.
+const TallerLayout  = lazy(() => import('./pages/taller/TallerLayout'))
 const TallerTablero = lazy(() => import('./pages/taller/Tablero'))
 const TallerAlta    = lazy(() => import('./pages/taller/Alta'))
 const TallerFicha   = lazy(() => import('./pages/taller/Ficha'))
+
+// Interfaz clásica del taller, la que usa cualquier empresa que no sea Forani.
+import TallerClasicoTablero from './pages/taller/clasico/Tablero'
+import TallerClasicoAlta from './pages/taller/clasico/Alta'
+import TallerClasicoFicha from './pages/taller/clasico/Ficha'
 
 // Elige el formulario de presupuesto según el modo de la empresa
 function PresupuestoNuevoSwitch() {
@@ -118,9 +125,17 @@ function Protegido({ children }) {
   return children
 }
 
-export default function AppRouter() {
+/**
+ * Las rutas viven en un componente propio porque el árbol depende de la empresa:
+ * el taller de Forani corre con la pizarra de control y su armazón aparte, y
+ * cualquier otro taller sigue con la interfaz clásica adentro del Layout de SAU.
+ * Eso solo se puede decidir dentro del AuthProvider.
+ */
+function Rutas() {
+  const { empresaActiva } = useAuth()
+  const pizarra = temaTaller(empresaActiva) === TEMA_CONTROL_BOARD
+
   return (
-    <AuthProvider>
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
@@ -157,22 +172,33 @@ export default function AppRouter() {
             <Route path="/contadora/:empresaId" element={<ContadoraEmpresa />} />
             <Route path="/perfil" element={<Perfil />} />
             <Route path="/importar" element={<Importar />} />
+
+            {/* Taller clásico: dentro del Layout de SAU, como cualquier otro módulo */}
+            {!pizarra && (
+              <>
+                <Route path="/taller" element={<TallerClasicoTablero />} />
+                <Route path="/taller/nuevo" element={<TallerClasicoAlta />} />
+                <Route path="/taller/:id" element={<TallerClasicoFicha />} />
+              </>
+            )}
           </Route>
 
-          {/* Taller: fuera del Layout de SAU, con su propio armazón y ancho completo */}
-          <Route
-            element={
-              <Protegido>
-                <Suspense fallback={<Splash />}>
-                  <TallerLayout />
-                </Suspense>
-              </Protegido>
-            }
-          >
-            <Route path="/taller" element={<TallerTablero />} />
-            <Route path="/taller/nuevo" element={<TallerAlta />} />
-            <Route path="/taller/:id" element={<TallerFicha />} />
-          </Route>
+          {/* Pizarra de control: fuera del Layout, con su propio armazón y ancho completo */}
+          {pizarra && (
+            <Route
+              element={
+                <Protegido>
+                  <Suspense fallback={<Splash />}>
+                    <TallerLayout />
+                  </Suspense>
+                </Protegido>
+              }
+            >
+              <Route path="/taller" element={<TallerTablero />} />
+              <Route path="/taller/nuevo" element={<TallerAlta />} />
+              <Route path="/taller/:id" element={<TallerFicha />} />
+            </Route>
+          )}
 
           <Route path="/sau-admin" element={<ProtegidoAdmin><AdminSAU /></ProtegidoAdmin>} />
           <Route path="/contadora-admin" element={<ProtegidoContadora><AdminContadora /></ProtegidoContadora>} />
@@ -180,6 +206,13 @@ export default function AppRouter() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
+  )
+}
+
+export default function AppRouter() {
+  return (
+    <AuthProvider>
+      <Rutas />
     </AuthProvider>
   )
 }

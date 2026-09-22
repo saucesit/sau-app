@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import {
   ETAPAS_ACTIVAS, etapaLabel, excepcionCfg,
-  diasEnTaller, estado, proximaAccion, patenteLegible, pendiente, fmtMonto,
+  diasEnTaller, estado, proximaAccion, patenteLegible, pendiente, fmtMonto, aFecha,
 } from '../../lib/taller'
 
 /** Las seis etapas siempre visibles, aunque estén vacías: es una pizarra, no una lista. */
@@ -113,8 +113,10 @@ export default function Tablero() {
     [vehiculos])
 
   const urgentes = vehiculos.filter(v => estado(v).s === 'urgent').length
-  const vencidos = vehiculos.filter(v =>
-    v.fecha_pactada && new Date(v.fecha_pactada).getTime() < Date.now()).length
+  const vencidos = vehiculos.filter(v => {
+    const f = aFecha(v.fecha_pactada)
+    return f && f.getTime() < Date.now()
+  }).length
 
   const elegido = vehiculos.find(v => v.id === sel) || null
 

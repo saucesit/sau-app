@@ -56,9 +56,32 @@ export function etapaSiguiente(id) {
   return i >= 0 && i < ETAPAS.length - 1 ? ETAPAS[i + 1].id : null
 }
 
+/**
+ * Las columnas `date` de Postgres llegan como '2026-09-22', y `new Date()` las
+ * interpreta como medianoche UTC: en Argentina eso cae el día anterior a las
+ * 21:00, y el taller veía todas las fechas y los plazos corridos un día.
+ * Los timestamptz vienen completos y se parsean normal.
+ */
+export function aFecha(valor) {
+  if (!valor) return null
+  if (typeof valor === 'string' && valor.length === 10) {
+    const [a, m, d] = valor.split('-').map(Number)
+    return new Date(a, m - 1, d)
+  }
+  return new Date(valor)
+}
+
 function diasDesde(fecha) {
-  if (!fecha) return 0
-  return Math.floor((Date.now() - new Date(fecha).getTime()) / 86400000)
+  const f = aFecha(fecha)
+  if (!f) return 0
+  return Math.floor((Date.now() - f.getTime()) / 86400000)
+}
+
+/** Días que faltan para una fecha pactada. Negativo si ya venció. */
+function diasHasta(fecha) {
+  const f = aFecha(fecha)
+  if (!f) return null
+  return Math.ceil((f.getTime() - Date.now()) / 86400000)
 }
 
 export const diasEnTaller = (v) => diasDesde(v.fecha_ingreso)
@@ -80,7 +103,7 @@ export function alertas(v) {
     out.push({ nivel: 'medio', texto: `${enEtapa} días sin avanzar` })
   }
   if (v.fecha_pactada && !v.fecha_entrega) {
-    const faltan = Math.ceil((new Date(v.fecha_pactada).getTime() - Date.now()) / 86400000)
+    const faltan = diasHasta(v.fecha_pactada)
     if (faltan < 0)       out.push({ nivel: 'alto',  texto: `vencido hace ${-faltan} días` })
     else if (faltan <= 2) out.push({ nivel: 'medio', texto: faltan === 0 ? 'vence hoy' : `vence en ${faltan} días` })
   }
@@ -112,9 +135,7 @@ export function fmtMonto(n) {
 export function estado(v) {
   const enTaller = diasEnTaller(v)
   const enEtapa  = diasEnEtapa(v)
-  const vence    = v.fecha_pactada
-    ? Math.ceil((new Date(v.fecha_pactada).getTime() - Date.now()) / 86400000)
-    : null
+  const vence    = diasHasta(v.fecha_pactada)
 
   if (enTaller > DIAS_ALERTA_TALLER)
     return { s: 'urgent', tag: 'DEMORA CRÍTICA', motivo: `${enTaller} días en taller` }
@@ -182,8 +203,9 @@ export function patenteLegible(p) {
 }
 
 export function fmtFecha(iso) {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+  const f = aFecha(iso)
+  if (!f) return '—'
+  return f.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
 }
 
 /** Compañías más usadas — el alta deja escribir otra igual */
