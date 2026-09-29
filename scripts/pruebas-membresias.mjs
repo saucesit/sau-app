@@ -19,6 +19,23 @@ const SUPA = env.VITE_SUPABASE_URL
 const ANON = env.VITE_SUPABASE_ANON_KEY
 const PASS = 'PruebaTaller2026'
 
+// Destinos que estos scripts tienen permitido tocar. Hoy está el proyecto de
+// SAU a propósito: el taller todavía no usa el sistema para trabajar y estamos
+// con una sola base. Cuando haya entorno separado, esta lista se vacía.
+// Cualquier otro destino se rechaza.
+const PROYECTOS_AUTORIZADOS = ['cezrotffjvqmymtdjhdw']
+{
+  const esLocal = /localhost|127\.0\.0\.1|\[::1\]/.test(SUPA || '')
+  const ref = (String(SUPA).match(/https:\/\/([a-z0-9]+)\.supabase\.co/) || [])[1]
+  if (!SUPA || (!esLocal && !PROYECTOS_AUTORIZADOS.includes(ref))) {
+    console.error(`Destino no autorizado: ${SUPA}`)
+    console.error('Agregalo a PROYECTOS_AUTORIZADOS solo si de verdad corresponde.')
+    process.exit(1)
+  }
+  console.log(esLocal ? 'Base local' : `Proyecto autorizado: ${ref}`)
+}
+
+
 const FORANI    = 'bdd20f9b-1030-434a-96de-2418afb53760'
 const EMPRESA_A = '11111111-aaaa-4aaa-8aaa-111111111111'
 

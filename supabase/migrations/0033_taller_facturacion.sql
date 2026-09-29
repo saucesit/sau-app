@@ -172,9 +172,14 @@ $$;
 grant execute on function taller_registrar_facturacion(uuid, text, text, text) to authenticated;
 
 -- ── 5. Aclaración de lo que ya existía ────────────────────────────
--- Los tildes de 0026 son de COBRO, no de facturación. El texto que dejaban en
--- la bitácora decía "Orden de compañía facturada", que ahora se confunde con lo
--- de arriba. Se corrige el texto; el comportamiento no cambia en nada.
+-- Los tildes de cobro dejaban en la bitácora "Orden de compañía facturada",
+-- que ahora se confunde con lo de arriba. Se corrige el texto y NADA MÁS.
+--
+-- Ojo: esta función se redefinió en 0026 y otra vez en 0028. La de abajo parte
+-- de la de 0028 —la que está corriendo— y conserva su `set_config`, que es lo
+-- que la deja pasar por la guardia de cobros que la propia 0028 agregó. Sin esa
+-- línea, la función chocaría contra su propio trigger y el cobro dejaría de
+-- funcionar.
 
 create or replace function taller_registrar_cobro(p_vehiculo uuid, p_campo text, p_valor boolean)
 returns void language plpgsql security definer set search_path = public as $$
@@ -190,6 +195,7 @@ begin
     raise exception 'No tenés permiso para registrar cobros';
   end if;
 
+  perform set_config('taller.flujo', 'on', true);
   execute format('update vehiculo_monto set %I = $1 where vehiculo_id = $2', p_campo)
     using p_valor, p_vehiculo;
 

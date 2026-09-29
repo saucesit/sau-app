@@ -1,22 +1,33 @@
 /**
  * Pruebas de la facturación por rubro (migración 0033).
  *
- * NO CORRE TODAVÍA: necesita que 0033 esté aplicada. Está escrita para el
- * entorno de pruebas separado, no para producción.
+ * Corre solo contra destinos autorizados: la base local, o el proyecto que
+ * figure abajo en PROYECTOS_AUTORIZADOS. Cualquier otro destino lo rechaza.
  *
- * Apunta a donde diga SUPA_URL/SUPA_ANON en el entorno; si no están, cae en
- * .env.desarrollo, que es la base local. Nunca lee .env.local a propósito, para
- * que un descuido no la dispare contra producción.
+ * Hoy está autorizado el proyecto de SAU, a propósito: el taller todavía no
+ * usa el sistema para trabajar y estamos con una sola base. Cuando haya
+ * entorno separado, esta lista se vacía.
+ *
+ * Trabaja únicamente sobre las empresas ZZ PRUEBA y sobre un vehículo propio
+ * (ZZFACT01) que crea si no está. No toca TALLER FORANI ni los vehículos de
+ * demostración.
  *
  *   node scripts/pruebas-facturacion.mjs
  */
 import fs from 'node:fs'
 
+const BR = String.fromCharCode(10)
+
+// Referencias de proyecto que este script tiene permitido tocar.
+const PROYECTOS_AUTORIZADOS = ['cezrotffjvqmymtdjhdw']
+
+const EMPRESA_A = '11111111-aaaa-4aaa-8aaa-111111111111'
+
 function leerEnv(archivo) {
   try {
     return Object.fromEntries(
       fs.readFileSync(new URL(archivo, import.meta.url), 'utf8')
-        .split('\n')
+        .split(BR)
         .filter(l => l.includes('=') && !l.trim().startsWith('#'))
         .map(l => {
           const i = l.indexOf('=')
@@ -25,20 +36,24 @@ function leerEnv(archivo) {
   } catch { return {} }
 }
 
-const env  = leerEnv('../.env.desarrollo')
+const env  = { ...leerEnv('../.env.local'), ...leerEnv('../.env.desarrollo') }
 const SUPA = process.env.SUPA_URL  || env.VITE_SUPABASE_URL
 const ANON = process.env.SUPA_ANON || env.VITE_SUPABASE_ANON_KEY
-const PASS = process.env.SUPA_PASS
+const PASS = process.env.SUPA_PASS || 'PruebaTaller2026'
 
-if (!SUPA || !ANON || !PASS) {
-  console.error('Falta configuración. Necesita .env.desarrollo (o SUPA_URL y')
-  console.error('SUPA_ANON) más SUPA_PASS con la clave de los usuarios locales.')
+if (!SUPA || !ANON) {
+  console.error('Falta la configuración de Supabase (.env.local o .env.desarrollo).')
   process.exit(1)
 }
-if (/supabase\.co/.test(SUPA)) {
-  console.error(`Esto apunta a ${SUPA}, que no es la base local. Cortado a propósito.`)
+
+const local = /localhost|127\.0\.0\.1|\[::1\]/.test(SUPA)
+const ref   = (SUPA.match(/https:\/\/([a-z0-9]+)\.supabase\.co/) || [])[1]
+if (!local && !PROYECTOS_AUTORIZADOS.includes(ref)) {
+  console.error(`Destino no autorizado: ${SUPA}`)
+  console.error('Agregalo a PROYECTOS_AUTORIZADOS solo si de verdad corresponde.')
   process.exit(1)
 }
+console.log(local ? 'Base local' : `Proyecto autorizado: ${ref}`)
 
 let ok = 0, fail = 0
 const fallos = []
@@ -71,13 +86,47 @@ async function rest(u, path, opts = {}) {
 const rpc = (u, fn, args) => rest(u, `rpc/${fn}`, { method: 'POST', body: JSON.stringify(args) })
 
 // ──────────────────────────────────────────────────────────────────
-const duena     = await login('duena@local.test')
-const chapista  = await login('chapista@local.test')   // sin taller.montos
-const recepcion = await login('recepcion@local.test')  // sin taller.montos
+// En la base local son los usuarios del seed; contra el proyecto autorizado,
+// los de las empresas ZZ PRUEBA, que ya existen.
+const U = local
+  ? { duena: 'duena@local.test',              sinMontosA: 'chapista@local.test',
+      sinMontosB: 'recepcion@local.test',     ajeno: 'almacen@local.test' }
+  : { duena: 'taller-a-completo@prueba.sau',  sinMontosA: 'taller-a-operario@prueba.sau',
+      sinMontosB: 'taller-a-coordinador@prueba.sau', ajeno: 'taller-b-admin@prueba.sau' }
 
-const { body: vs } = await rest(duena, 'vehiculo?etapa=neq.entregado&select=id,patente&limit=1')
-if (!vs?.length) { console.error('No hay vehículos activos. ¿Corrió supabase/seed.sql?'); process.exit(1) }
+const duena     = await login(U.duena)
+const chapista  = await login(U.sinMontosA)   // sin taller.montos
+const recepcion = await login(U.sinMontosB)   // sin taller.montos
+
+// Vehículo propio de esta suite: así no se ensucian los de demostración
+// ni los de TALLER FORANI, a los que estos usuarios ni siquiera llegan.
+let { body: vs } = await rest(duena, 'vehiculo?patente=eq.ZZFACT01&select=id,patente')
+if (!vs?.length) {
+  const alta = await rest(duena, 'vehiculo', {
+    method: 'POST', headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({
+      empresa_id: EMPRESA_A, patente: 'ZZFACT01', vehiculo: 'AUTO DE PRUEBA FACTURACION',
+      cliente_nombre: 'CLIENTE DE PRUEBA', compania: 'Particular',
+      fecha_ingreso: new Date().toISOString().slice(0, 10),
+      fecha_pactada: new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10),
+      panos: 3, dias_chapa: 5,
+    }),
+  })
+  if (!alta.ok) { console.error('No se pudo crear ZZFACT01:', JSON.stringify(alta.body)); process.exit(1) }
+  vs = alta.body
+}
 const VEH = vs[0].id
+
+// Importes conocidos y estado de arranque limpio, para poder correrla dos veces.
+await rest(duena, `vehiculo_monto?vehiculo_id=eq.${VEH}`, {
+  method: 'PATCH',
+  body: JSON.stringify({ monto_compania: 1000000, monto_franquicia: 200000, monto_particular: 300000 }),
+})
+for (const r of ['compania', 'franquicia', 'particular']) {
+  await rpc(duena, 'taller_registrar_facturacion', { p_vehiculo: VEH, p_rubro: r, p_estado: 'pendiente' })
+}
+await rpc(duena, 'taller_registrar_cobro', { p_vehiculo: VEH, p_campo: 'cobro_franquicia', p_valor: false })
+
 console.log(`\nVehículo de prueba: ${vs[0].patente}\n`)
 
 const monto = async (u = duena) =>
@@ -208,7 +257,7 @@ console.log('\n6. SIN taller.montos')
 // ── 7. Otra empresa: ni consulta ni modifica ──────────────────────
 console.log('\n7. AISLAMIENTO ENTRE EMPRESAS')
 {
-  const ajeno = await login('almacen@local.test')   // está en La Esquina, no en el taller
+  const ajeno = await login(U.ajeno)   // otra empresa
 
   const ver = await rest(ajeno, `vehiculo?id=eq.${VEH}&select=id`)
   check('no ve el vehículo de la otra empresa',
