@@ -43,7 +43,7 @@ export function AuthProvider({ children }) {
         .from('profile').select('*').eq('id', session.user.id).single()
       const { data: mems } = await supabase
         .from('membresia')
-        .select('id, rol, permisos, empresa_id, empresa:empresa_id(*)')
+        .select('id, rol, permisos, taller_etapas, empresa_id, empresa:empresa_id(*)')
         .eq('usuario_id', session.user.id)
         .eq('activa', true)
       if (cancelado) return
@@ -73,6 +73,11 @@ export function AuthProvider({ children }) {
   const rol = membresiaActiva?.rol || null
   const permisos = membresiaActiva?.permisos || []
 
+  // Etapas del taller donde esta persona puede marcar trabajo realizado.
+  // Vacío = ninguna: así lo hace cumplir taller_marcar_trabajo_hecho() en la
+  // base. Lo leemos acá para no ofrecer un botón que siempre va a fallar.
+  const tallerEtapas = membresiaActiva?.taller_etapas || []
+
   // Contadora y admin tienen acceso a todo sin necesidad de permiso explícito.
   const tienePermiso = useCallback(
     (permiso) => {
@@ -96,7 +101,7 @@ export function AuthProvider({ children }) {
     if (!session?.user) return
     const { data: mems } = await supabase
       .from('membresia')
-      .select('id, rol, permisos, empresa_id, empresa:empresa_id(*)')
+      .select('id, rol, permisos, taller_etapas, empresa_id, empresa:empresa_id(*)')
       .eq('usuario_id', session.user.id)
       .eq('activa', true)
     if (mems) setMembresias(mems)
@@ -113,6 +118,7 @@ export function AuthProvider({ children }) {
     setEmpresaActivaId,
     rol,
     permisos,
+    tallerEtapas,
     tienePermiso,
     modulosActivos,
     tieneModulo,

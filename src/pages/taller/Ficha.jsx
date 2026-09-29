@@ -6,6 +6,7 @@ import {
   ETAPAS, ETAPAS_ACTIVAS, EXCEPCIONES, etapaLabel,
   diasEnTaller, diasEnEtapa, estado, proximaAccion, patenteLegible,
   pendiente, total, fmtMonto, fmtFecha,
+  RUBROS, ESTADOS_FACTURACION, estadoFacturacion,
 } from '../../lib/taller'
 
 function Panel({ legend, children }) {
@@ -39,7 +40,7 @@ function Cadena({ etapa }) {
 export default function Ficha() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { tienePermiso } = useAuth()
+  const { tienePermiso, tallerEtapas } = useAuth()
 
   const [v,        setV]        = useState(null)
   const [eventos,  setEventos]  = useState([])
@@ -49,10 +50,15 @@ export default function Ficha() {
   const [accion,   setAccion]   = useState(false)
   const [fEntrega, setFEntrega] = useState('')
   const [error,    setError]    = useState(null)
+  // Número de factura en edición, por rubro. Se rellena con lo guardado.
+  const [facturas, setFacturas] = useState({})
 
   const verMontos     = tienePermiso('taller.montos')
   const puedeValidar  = tienePermiso('taller.validar')
   const puedeTrabajar = tienePermiso('taller.trabajar')
+  // El permiso solo no alcanza: hay que tener cargadas las etapas del oficio.
+  // Quien no las tiene veía el botón y recién al tocarlo le saltaba el error.
+  const sinEtapas     = puedeTrabajar && tallerEtapas.length === 0
 
   useEffect(() => { cargar() }, [id])
 
@@ -68,6 +74,7 @@ export default function Ficha() {
     setV(veh ? { ...veh, ...(monto || {}) } : null)
     setEventos(evs || [])
     setFEntrega(veh?.fecha_entrega || new Date().toISOString().slice(0, 10))
+    setFacturas(Object.fromEntries(RUBROS.map(r => [r.id, monto?.[r.factura] || ''])))
 
     if (arch?.length) {
       const firmados = await Promise.all(arch.map(async a => {
@@ -99,6 +106,18 @@ export default function Ficha() {
   const validarAvance  = () => llamar('taller_validar_avance', { p_vehiculo: id })
   const toggleCobro    = (campo) =>
     llamar('taller_registrar_cobro', { p_vehiculo: id, p_campo: campo, p_valor: !v[campo] })
+
+  /**
+   * Facturar es manual y a mano: no se dispara solo desde los tildes de cobro
+   * ni al entregar el auto. Es una decisión tomada para esta prueba.
+   */
+  const marcarFacturacion = (rubro, nuevoEstado) =>
+    llamar('taller_registrar_facturacion', {
+      p_vehiculo: id,
+      p_rubro:    rubro.id,
+      p_estado:   nuevoEstado,
+      p_factura:  nuevoEstado === 'facturado' ? (facturas[rubro.id] || null) : null,
+    })
   const toggleExcepcion = (exId) =>
     llamar('taller_cambiar_excepcion', { p_vehiculo: id, p_excepcion: v.excepcion === exId ? null : exId })
 
@@ -131,8 +150,10 @@ export default function Ficha() {
 
   return (
     <main className="t-page">
-      <button className="t-eyebrow" onClick={() => navigate('/taller')} style={{ cursor: 'pointer' }}>
-        ← VOLVER A LA PIZARRA
+      {/* Un entregado no está en la pizarra: se llegó desde el archivo. */}
+      <button className="t-eyebrow" style={{ cursor: 'pointer' }}
+              onClick={() => navigate(entregado ? '/taller/entregados' : '/taller')}>
+        {entregado ? '← VOLVER AL ARCHIVO' : '← VOLVER A LA PIZARRA'}
       </button>
 
       <div className="t-head" style={{ marginTop: 8 }}>
@@ -160,10 +181,15 @@ export default function Ficha() {
 
           <div className="t-acciones">
             {puedeTrabajar && !v.trabajo_hecho && !terminado && !v.excepcion && (
-              <button className="t-btn fantasma" onClick={marcarHecho} disabled={accion}
-                      style={{ background: '#fff' }}>
-                Marcar mi trabajo
-              </button>
+              sinEtapas
+                ? <p className="t-aviso" style={{ flex: 1 }}>
+                    Todavía no tenés etapas habilitadas, así que no podés marcar trabajo.
+                    Quien administra el taller tiene que configurar tu oficio en ADMIN.
+                  </p>
+                : <button className="t-btn fantasma" onClick={marcarHecho} disabled={accion}
+                          style={{ background: '#fff' }}>
+                    Marcar mi trabajo
+                  </button>
             )}
             {puedeValidar && !terminado && !v.excepcion && (
               <button className="t-btn urgente" onClick={validarAvance} disabled={accion}>
@@ -174,6 +200,10 @@ export default function Ficha() {
         </div>
       )}
 
+      {/* Un auto entregado no puede entrar en mecánica ni quedar detenido:
+          el panel quedaba visible con los botones muertos y un texto que decía
+          que "retoma en Entregado". */}
+      {!entregado && (
       <Panel legend="ESTADOS EN PARALELO">
         <div className="t-fila">
           {EXCEPCIONES.map(x => (
@@ -191,25 +221,68 @@ export default function Ficha() {
           No sacan el vehículo de su etapa. Al levantarlos, retoma en {etapaLabel(v.etapa)}.
         </p>
       </Panel>
+      )}
 
       {verMontos && (
-        <Panel legend="FACTURACIÓN Y COBRO">
-          {[
-            { campo: 'cobro_franquicia', label: 'Franquicia cobrada',          monto: v.monto_franquicia },
-            { campo: 'cobro_compania',   label: 'Orden de compañía facturada', monto: v.monto_compania },
-            { campo: 'cobro_particular', label: 'Reparación particular pagada', monto: v.monto_particular },
-          ].map(x => (
-            <button key={x.campo}
-                    className={`t-toggle${v[x.campo] ? ' si' : ''}`}
+        <Panel legend="FACTURACIÓN">
+          <p className="t-aviso" style={{ marginBottom: 14 }}>
+            Mientras un rubro esté pendiente, su importe suma en los totales de la
+            pizarra. Se puede facturar antes de entregar el auto.
+          </p>
+
+          {RUBROS.map(r => {
+            const est = estadoFacturacion(v, r)
+            return (
+              <div key={r.id} className="t-rubro">
+                <div className="t-rubro-head">
+                  <span className="t-rubro-n">{r.label}</span>
+                  <span className="t-rubro-m">{fmtMonto(v[r.monto])}</span>
+                </div>
+
+                <div className="t-opciones tres">
+                  {ESTADOS_FACTURACION.map(e => (
+                    <button key={e.id}
+                            className={`t-estado${est === e.id ? ' elegido' : ''}`}
+                            disabled={accion || est === e.id}
+                            onClick={() => marcarFacturacion(r, e.id)}>
+                      {e.label}
+                    </button>
+                  ))}
+                </div>
+
+                {est === 'facturado' && (
+                  <div className="t-fila" style={{ marginTop: 8 }}>
+                    <input className="t-input mono" placeholder="N° de factura"
+                           value={facturas[r.id] || ''}
+                           onChange={ev => setFacturas(p => ({ ...p, [r.id]: ev.target.value }))} />
+                    <button className="t-btn fantasma" disabled={accion}
+                            onClick={() => marcarFacturacion(r, 'facturado')}>
+                      Guardar N°
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </Panel>
+      )}
+
+      {verMontos && (
+        <Panel legend="COBRO">
+          {/* Cobrar es otra cosa que facturar y sigue funcionando como antes:
+              marcar una no marca la otra. */}
+          {RUBROS.map(r => (
+            <button key={r.cobro}
+                    className={`t-toggle${v[r.cobro] ? ' si' : ''}`}
                     disabled={accion || entregado}
-                    onClick={() => toggleCobro(x.campo)}>
+                    onClick={() => toggleCobro(r.cobro)}>
               <span>
-                <span className="t-toggle-t">{x.label}</span>
+                <span className="t-toggle-t">Cobro · {r.label}</span>
                 <span className="t-toggle-m" style={{ display: 'block' }}>
-                  {Number(x.monto) ? fmtMonto(x.monto) : 'No aplica'}
+                  {Number(v[r.monto]) ? fmtMonto(v[r.monto]) : 'Sin importe'}
                 </span>
               </span>
-              <span className="t-toggle-i">{v[x.campo] ? '✓' : '○'}</span>
+              <span className="t-toggle-i">{v[r.cobro] ? '✓' : '○'}</span>
             </button>
           ))}
 
@@ -232,11 +305,17 @@ export default function Ficha() {
 
       <Panel legend="DATOS DEL CASO">
         <dl>
+          <Dato k="Teléfono del cliente" v={v.telefono
+            ? <a className="t-tel" href={`tel:${v.telefono.replace(/[^\d+]/g, '')}`}>{v.telefono}</a>
+            : null} />
           <Dato k="N° de siniestro" v={v.nro_siniestro} />
           <Dato k="Productor"       v={v.productor} />
           <Dato k="Perito"          v={v.perito} />
           <Dato k="Kilometraje"     v={v.kilometraje ? `${Number(v.kilometraje).toLocaleString('es-AR')} km` : null} />
-          <Dato k="Paños"           v={v.panos} />
+          {/* Trabajo asignado al ingreso. No se recalcula con el tiempo ni
+              tiene que ver con la fecha pactada, que va más abajo. */}
+          <Dato k="Paños asignados" v={v.panos} />
+          <Dato k="Días de chapa"   v={v.dias_chapa} />
           <Dato k="Ingreso"         v={fmtFecha(v.fecha_ingreso)} />
           <Dato k="Fecha pactada"   v={fmtFecha(v.fecha_pactada)} />
           <Dato k="En taller"       v={`${diasEnTaller(v)} días`} />

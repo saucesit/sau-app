@@ -189,7 +189,7 @@ La base tiene **32 tablas** en `public`, **todas con RLS habilitada**, y 3 vista
 
 ## 6. Migraciones
 
-**31 migraciones, de `0001` a `0031`, todas aplicadas en producción.** No hay ninguna pendiente.
+**32 migraciones, de `0001` a `0032`, todas aplicadas en producción.** No hay ninguna pendiente.
 
 Las más relevantes para esta revisión:
 
@@ -207,6 +207,7 @@ Las más relevantes para esta revisión:
 | `0029_taller_marcado_idempotente.sql` | Un trabajo no se puede marcar dos veces |
 | `0030_tema_taller.sql` | `empresa.tema_taller`: qué interfaz del taller ve cada cliente |
 | `0031_membresias_seguridad.sql` | **Cierre del alta de membresías desde el navegador** e invitaciones de un solo uso |
+| `0032_taller_telefono.sql` | `vehiculo.telefono`: contacto del cliente para ese ingreso |
 
 ### Advertencia importante sobre el proceso
 
@@ -413,13 +414,17 @@ No hay policies de UPDATE ni DELETE, así que nadie puede modificar ni borrar ar
 
 ### Módulo taller
 
+Cada empresa ve una de dos interfaces según `empresa.tema_taller`: la pizarra de
+control (`src/pages/taller/`) o la clásica (`src/pages/taller/clasico/`).
+
 | Pantalla | Archivo | Estado |
 |---|---|---|
-| Tablero | `src/pages/Taller.jsx` | **Funcional.** KPIs, agrupación por etapa, alertas, buscador |
-| Alta de vehículo | `src/pages/TallerNuevo.jsx` | **Funcional, salvo la subida de archivos** (ver abajo) |
-| Ficha del vehículo | `src/pages/TallerVehiculo.jsx` | **Funcional.** Etapas, validación, excepciones, cobros, entrega, bitácora |
-| Consulta histórica de entregados | — | **No existe.** Es el pendiente principal |
-| Dashboard separado | — | **No existe.** Los indicadores están arriba del tablero |
+| Pizarra | `src/pages/taller/Tablero.jsx` | **Funcional.** KPIs, seis etapas, cola de decisiones, panel de selección. Un clic selecciona, doble clic abre la ficha; en celular el toque abre la ficha |
+| Alta de vehículo | `src/pages/taller/Alta.jsx` | **Funcional, fotos y PDF incluidos.** Las fotos se acumulan entre tandas y se pueden quitar |
+| Ficha del vehículo | `src/pages/taller/Ficha.jsx` | **Funcional.** Etapas, validación, excepciones, cobros, entrega, bitácora, teléfono |
+| Archivo de entregados | `src/pages/taller/Entregados.jsx` | **Funcional en modo consulta.** Búsqueda por patente, cliente, vehículo o siniestro; agrupado por año; abre la ficha completa. **No marca facturado**: facturado y cobrado son conceptos separados y ya está definido que no se mezclan; falta definir cómo se registra la facturación |
+| Administración | `src/pages/taller/Admin.jsx` | **Funcional.** Equipo, perfiles, etapas habilitadas, invitaciones |
+| Dashboard separado | — | **No existe.** Los indicadores están arriba de la pizarra |
 
 ### Resto de SAU (preexistente)
 

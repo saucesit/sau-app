@@ -84,14 +84,29 @@ function diasHasta(fecha) {
   return Math.ceil((f.getTime() - Date.now()) / 86400000)
 }
 
-export const diasEnTaller = (v) => diasDesde(v.fecha_ingreso)
-export const diasEnEtapa  = (v) => diasDesde(v.etapa_desde)
+function diasEntre(desde, hasta) {
+  const a = aFecha(desde)
+  const b = aFecha(hasta)
+  if (!a || !b) return 0
+  return Math.max(0, Math.floor((b.getTime() - a.getTime()) / 86400000))
+}
+
+/**
+ * Cuánto estuvo el auto adentro. Si ya se entregó, el conteo se cierra en la
+ * fecha de entrega: si no, un trabajo entregado en 2024 sigue sumando días para
+ * siempre y el archivo muestra a todos los vehículos como demora crítica.
+ */
+export const diasEnTaller = (v) =>
+  v.fecha_entrega ? diasEntre(v.fecha_ingreso, v.fecha_entrega) : diasDesde(v.fecha_ingreso)
+
+export const diasEnEtapa = (v) => diasDesde(v.etapa_desde)
 
 /**
  * Alertas de un vehículo, ordenadas de más grave a menos.
  * Devuelve [] si está todo en plazo.
  */
 export function alertas(v) {
+  if (v.etapa === 'entregado') return []
   const out = []
   const enTaller = diasEnTaller(v)
   const enEtapa  = diasEnEtapa(v)
@@ -108,6 +123,63 @@ export function alertas(v) {
     else if (faltan <= 2) out.push({ nivel: 'medio', texto: faltan === 0 ? 'vence hoy' : `vence en ${faltan} días` })
   }
   return out
+}
+
+/**
+ * Los tres rubros que se facturan y se cobran por separado.
+ *
+ * Facturar y cobrar son dos cosas distintas y no se tocan entre sí: el taller
+ * factura cuando la compañía le aprueba la orden, y cobra cuando le pagan, que
+ * puede ser dos meses después. Cada rubro lleva las dos marcas por separado.
+ */
+export const RUBROS = [
+  { id: 'compania',   label: 'Compañía',   monto: 'monto_compania',   estado: 'estado_compania',   factura: 'factura_compania',   cobro: 'cobro_compania'   },
+  { id: 'franquicia', label: 'Franquicia', monto: 'monto_franquicia', estado: 'estado_franquicia', factura: 'factura_franquicia', cobro: 'cobro_franquicia' },
+  { id: 'particular', label: 'Particular', monto: 'monto_particular', estado: 'estado_particular', factura: 'factura_particular', cobro: 'cobro_particular' },
+]
+
+export const ESTADOS_FACTURACION = [
+  { id: 'pendiente', label: 'Pendiente' },
+  { id: 'facturado', label: 'Facturado' },
+  { id: 'no_aplica', label: 'No aplica' },
+]
+
+/** Un rubro sin estado cargado cuenta como pendiente: es el default de la base. */
+export function estadoFacturacion(v, rubro) {
+  return v?.[rubro.estado] || 'pendiente'
+}
+
+/**
+ * Lo que falta facturar de un rubro. Facturado y no aplica no suman: por eso
+ * el total del tablero baja solo cuando alguien marca la factura.
+ */
+export function pendienteFacturar(v, rubro) {
+  return estadoFacturacion(v, rubro) === 'pendiente' ? Number(v[rubro.monto] || 0) : 0
+}
+
+/**
+ * Totales a facturar del tablero, por rubro.
+ *
+ * Suma únicamente los vehículos que están adentro del taller: un entregado deja
+ * de sumar aunque no se haya facturado, y conserva toda su información en el
+ * archivo. Quien llame a esto tiene que tener taller.montos — sin ese permiso
+ * la base ni siquiera devuelve los montos y el resultado da cero.
+ */
+export function totalesAFacturar(vehiculos) {
+  const out = { compania: 0, franquicia: 0, particular: 0 }
+  vehiculos.forEach(v => {
+    if (v.etapa === 'entregado') return
+    RUBROS.forEach(r => { out[r.id] += pendienteFacturar(v, r) })
+  })
+  return out
+}
+
+/**
+ * Un vehículo está facturado cuando no le queda ningún importe pendiente.
+ * Un rubro en cero no cuenta aunque esté en pendiente: no hay nada que facturar.
+ */
+export function facturacionCompleta(v) {
+  return RUBROS.every(r => pendienteFacturar(v, r) === 0)
 }
 
 /** Lo que falta cobrar de un vehículo: cada validación tildada descuenta su monto */
@@ -133,6 +205,11 @@ export function fmtMonto(n) {
  * Devuelve `motivo` solo cuando hay algo que decidir — eso arma la cola.
  */
 export function estado(v) {
+  // Un auto entregado ya no tiene alertas: salió del taller. Sin este corte, el
+  // archivo de entregados marca como vencido todo lo que se entregó hace tiempo.
+  if (v.etapa === 'entregado')
+    return { s: 'ready', tag: 'ENTREGADO', motivo: null }
+
   const enTaller = diasEnTaller(v)
   const enEtapa  = diasEnEtapa(v)
   const vence    = diasHasta(v.fecha_pactada)

@@ -21,6 +21,23 @@ const SUPA = env.VITE_SUPABASE_URL
 const ANON = env.VITE_SUPABASE_ANON_KEY
 const PASS = 'PruebaTaller2026'
 
+// Destinos que estos scripts tienen permitido tocar. Hoy está el proyecto de
+// SAU a propósito: el taller todavía no usa el sistema para trabajar y estamos
+// con una sola base. Cuando haya entorno separado, esta lista se vacía.
+// Cualquier otro destino se rechaza.
+const PROYECTOS_AUTORIZADOS = ['cezrotffjvqmymtdjhdw']
+{
+  const esLocal = /localhost|127\.0\.0\.1|\[::1\]/.test(SUPA || '')
+  const ref = (String(SUPA).match(/https:\/\/([a-z0-9]+)\.supabase\.co/) || [])[1]
+  if (!SUPA || (!esLocal && !PROYECTOS_AUTORIZADOS.includes(ref))) {
+    console.error(`Destino no autorizado: ${SUPA}`)
+    console.error('Agregalo a PROYECTOS_AUTORIZADOS solo si de verdad corresponde.')
+    process.exit(1)
+  }
+  console.log(esLocal ? 'Base local' : `Proyecto autorizado: ${ref}`)
+}
+
+
 const EMPRESA_A = '11111111-aaaa-4aaa-8aaa-111111111111'
 const EMPRESA_B = '22222222-bbbb-4bbb-8bbb-222222222222'
 
@@ -341,8 +358,11 @@ console.log('\n9. COBROS SOLO POR LA FUNCIÓN')
 
   const { body: ev } = await rest(users.admin,
     `vehiculo_evento?vehiculo_id=eq.${VEH}&tipo=eq.cobro&select=texto&order=created_at.desc&limit=1`)
+  // Se afirma el rubro y que quedó validado, no la redacción exacta: 0033
+  // reescribe el texto para que no diga "facturada", que ahora es otra cosa.
   check('y dejó el movimiento en la bitácora',
-        /Orden de compañía facturada: validado/.test(ev[0]?.texto || ''), ev[0]?.texto)
+        /compañía/i.test(ev[0]?.texto || '') && /validado/.test(ev[0]?.texto || ''),
+        ev[0]?.texto)
 
   // Los montos en sí se siguen pudiendo editar
   const monto = await rest(users.admin, `vehiculo_monto?vehiculo_id=eq.${VEH}`, {
@@ -350,6 +370,47 @@ console.log('\n9. COBROS SOLO POR LA FUNCIÓN')
     body: JSON.stringify({ monto_compania: 123456 }),
   })
   check('los montos sí se editan por API', monto.ok, `status ${monto.status}`)
+}
+
+// ── 10. Archivo de entregados ────────────────────────────────────
+// Depende de la sección 7: ahí ZZTEST01 quedó entregado.
+console.log('\n10. ARCHIVO DE ENTREGADOS')
+{
+  const pizarra = await rest(users.admin,
+    `vehiculo?empresa_id=eq.${EMPRESA_A}&etapa=neq.entregado&select=id`)
+  check('un entregado ya no aparece en la pizarra',
+        Array.isArray(pizarra.body) && !pizarra.body.some(v => v.id === VEH))
+
+  const archivo = await rest(users.admin,
+    `vehiculo?empresa_id=eq.${EMPRESA_A}&etapa=eq.entregado&select=id,patente`)
+  check('pero sí en el archivo', Array.isArray(archivo.body) && archivo.body.some(v => v.id === VEH))
+
+  const ajena = await rest(users.otraEmpresa,
+    `vehiculo?empresa_id=eq.${EMPRESA_A}&etapa=eq.entregado&select=id`)
+  check('empresa B no ve el archivo de la empresa A',
+        Array.isArray(ajena.body) && ajena.body.length === 0, JSON.stringify(ajena.body))
+
+  // La pantalla busca la patente normalizada: "zz test01" viaja como ZZTEST01.
+  const buscada = await rest(users.admin,
+    `vehiculo?empresa_id=eq.${EMPRESA_A}&etapa=eq.entregado&patente=ilike.*ZZTEST01*&select=id`)
+  check('la búsqueda por patente lo encuentra',
+        Array.isArray(buscada.body) && buscada.body.length === 1)
+
+  // El teléfono es dato de contacto, no de facturación: no va detrás de taller.montos.
+  const guardar = await rest(users.admin, `vehiculo?id=eq.${VEH}`, {
+    method: 'PATCH', headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ telefono: '387 000-1122' }),
+  })
+  check('el teléfono se puede cargar sin tocar el flujo', guardar.ok, `status ${guardar.status}`)
+
+  const leido = await rest(users.operario, `vehiculo?id=eq.${VEH}&select=telefono`)
+  check('y lo lee quien no ve montos', leido.body?.[0]?.telefono === '387 000-1122',
+        JSON.stringify(leido.body))
+
+  const montosOperario = await rest(users.operario, `vehiculo_monto?vehiculo_id=eq.${VEH}&select=monto_compania`)
+  check('el archivo no le muestra la plata a quien no tiene taller.montos',
+        Array.isArray(montosOperario.body) && montosOperario.body.length === 0,
+        JSON.stringify(montosOperario.body))
 }
 
 console.log(`\n${'='.repeat(52)}`)

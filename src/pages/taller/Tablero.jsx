@@ -5,10 +5,12 @@ import { useAuth } from '../../context/AuthContext'
 import {
   ETAPAS_ACTIVAS, etapaLabel, excepcionCfg,
   diasEnTaller, estado, proximaAccion, patenteLegible, pendiente, fmtMonto, aFecha,
+  RUBROS, totalesAFacturar, pendienteFacturar,
 } from '../../lib/taller'
+import { useCelular } from '../../lib/useCelular'
 
 /** Las seis etapas siempre visibles, aunque estén vacías: es una pizarra, no una lista. */
-function Columna({ etapa, autos, sel, onElegir }) {
+function Columna({ etapa, autos, sel, onElegir, onAbrir }) {
   return (
     <section className="t-col">
       <header className="t-col-head">
@@ -20,17 +22,28 @@ function Columna({ etapa, autos, sel, onElegir }) {
       <div className="t-col-body">
         {autos.length === 0
           ? <p className="t-vacia">SIN VEHÍCULOS</p>
-          : autos.map(v => <Tarjeta key={v.id} v={v} activa={sel === v.id} onElegir={onElegir} />)}
+          : autos.map(v => (
+              <Tarjeta key={v.id} v={v} activa={sel === v.id}
+                       onElegir={onElegir} onAbrir={onAbrir} />
+            ))}
       </div>
     </section>
   )
 }
 
-function Tarjeta({ v, activa, onElegir }) {
+/**
+ * En escritorio un clic selecciona (llena el panel de la derecha, que es como
+ * se barre la pizarra sin perder el contexto) y el doble clic abre la ficha.
+ * En celular el panel queda apilado abajo, fuera de la vista: ahí seleccionar
+ * no sirve para nada y el toque abre la ficha directo.
+ */
+function Tarjeta({ v, activa, onElegir, onAbrir }) {
   const e   = estado(v)
   const exc = excepcionCfg(v.excepcion)
   return (
-    <button className={`t-card s-${e.s}`} aria-pressed={activa} onClick={() => onElegir(v.id)}>
+    <button className={`t-card s-${e.s}`} aria-pressed={activa}
+            onClick={() => onElegir(v.id)}
+            onDoubleClick={() => onAbrir(v.id)}>
       <div className="t-plate">{patenteLegible(v.patente)}</div>
       <div className="t-who">{v.vehiculo} · {v.cliente_nombre}</div>
       <div className="t-meta">
@@ -56,6 +69,10 @@ export default function Tablero() {
 
   const verMontos = tienePermiso('taller.montos')
   const puedeAlta = tienePermiso('taller.cargar')
+  const esCelular = useCelular()
+
+  const abrirFicha = (id) => navigate(`/taller/${id}`)
+  const elegir     = (id) => (esCelular ? abrirFicha(id) : setSel(id))
 
   async function cargar() {
     if (!empresaActivaId) return
@@ -118,6 +135,11 @@ export default function Tablero() {
     return f && f.getTime() < Date.now()
   }).length
 
+  // Solo lo pendiente de facturar, y solo de lo que está adentro del taller.
+  // `vehiculos` ya viene sin entregados; la función lo vuelve a filtrar para
+  // que el total no dependa de cómo se cargó la lista.
+  const aFacturar = useMemo(() => totalesAFacturar(vehiculos), [vehiculos])
+
   const elegido = vehiculos.find(v => v.id === sel) || null
 
   if (cargando) {
@@ -157,14 +179,29 @@ export default function Tablero() {
           </div>
         </div>
 
+        {/* La plata la ve solo quien tiene taller.montos. Sin ese permiso la
+            base no devuelve los montos, pero igual no dibujamos la fila: si no,
+            el operario ve tres carteles en cero y parece que el taller no cobra. */}
+        {verMontos && (
+          <div className="t-kpis plata">
+            {RUBROS.map(r => (
+              <div key={r.id} className="t-kpi">
+                <div className="t-kpi-n money">{fmtMonto(aFacturar[r.id])}</div>
+                <div className="t-kpi-l">A FACTURAR · {r.label.toUpperCase()}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="t-board-head">
           <h2 className="t-h2">Flujo de producción</h2>
-          <p className="t-hint">ELEGÍ UN VEHÍCULO PARA VER SU PRÓXIMA ACCIÓN</p>
+          <p className="t-hint">UN CLIC MUESTRA LA PRÓXIMA ACCIÓN · DOBLE CLIC ABRE LA FICHA</p>
         </div>
 
         <div className="t-board">
           {ETAPAS_ACTIVAS.map(e => (
-            <Columna key={e.id} etapa={e} autos={porEtapa[e.id]} sel={sel} onElegir={setSel} />
+            <Columna key={e.id} etapa={e} autos={porEtapa[e.id]} sel={sel}
+                     onElegir={elegir} onAbrir={abrirFicha} />
           ))}
         </div>
       </main>
@@ -179,7 +216,8 @@ export default function Tablero() {
         ) : cola.map(v => {
           const e = estado(v)
           return (
-            <button key={v.id} className="t-q" onClick={() => setSel(v.id)}>
+            <button key={v.id} className="t-q" onClick={() => elegir(v.id)}
+                    onDoubleClick={() => abrirFicha(v.id)}>
               <div className="t-q-plate">{patenteLegible(v.patente)}</div>
               <div className="t-q-sub">
                 {v.vehiculo} · {v.excepcion ? excepcionCfg(v.excepcion).label : etapaLabel(v.etapa)}
@@ -196,7 +234,7 @@ export default function Tablero() {
               Elegí una orden de la pizarra o de la cola para ver qué hay que hacer con ella.
             </p>
           ) : (
-            <Seleccionado v={elegido} verMontos={verMontos} onAbrir={() => navigate(`/taller/${elegido.id}`)} />
+            <Seleccionado v={elegido} verMontos={verMontos} onAbrir={() => abrirFicha(elegido.id)} />
           )}
         </div>
       </aside>
@@ -215,9 +253,16 @@ function Seleccionado({ v, verMontos, onAbrir }) {
         <div className="t-kv"><dt>Compañía</dt><dd>{v.compania}</dd></div>
         <div className="t-kv"><dt>Etapa</dt><dd>{etapaLabel(v.etapa)}</dd></div>
         {v.panos ? <div className="t-kv"><dt>Paños</dt><dd>{v.panos}</dd></div> : null}
+        {v.dias_chapa ? <div className="t-kv"><dt>Días de chapa</dt><dd>{v.dias_chapa}</dd></div> : null}
         <div className="t-kv"><dt>En taller</dt><dd>{diasEnTaller(v)} días</dd></div>
         <div className="t-kv">
-          <dt>Pendiente</dt>
+          <dt>A facturar</dt>
+          <dd>{verMontos
+            ? fmtMonto(RUBROS.reduce((s, r) => s + pendienteFacturar(v, r), 0))
+            : <span className="t-oculto">sin permiso</span>}</dd>
+        </div>
+        <div className="t-kv">
+          <dt>Pendiente de cobro</dt>
           <dd>{verMontos ? fmtMonto(pendiente(v)) : <span className="t-oculto">sin permiso</span>}</dd>
         </div>
       </dl>

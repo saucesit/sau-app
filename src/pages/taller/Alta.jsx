@@ -22,7 +22,8 @@ export default function Alta() {
 
   const hoy = new Date().toISOString().slice(0, 10)
   const [f, setF] = useState({
-    patente: '', vehiculo: '', kilometraje: '', cliente_nombre: '', panos: '',
+    patente: '', vehiculo: '', kilometraje: '', cliente_nombre: '', telefono: '',
+    panos: '', dias_chapa: '',
     compania: '', productor: '', perito: '', nro_siniestro: '',
     fecha_ingreso: hoy, fecha_pactada: '',
     monto_compania: '', monto_franquicia: '', monto_particular: '',
@@ -34,6 +35,25 @@ export default function Alta() {
   const [error,     setError]     = useState(null)
 
   const set = (k) => (e) => setF(prev => ({ ...prev, [k]: e.target.value }))
+
+  /**
+   * Desde el celular las fotos se sacan de a una o dos, no todas juntas: si
+   * cada tanda pisara la anterior, el segundo viaje al auto borraría el primero.
+   * Por eso se acumulan, se descartan las repetidas y se puede sacar una.
+   */
+  const claveFoto = (x) => `${x.name}-${x.size}-${x.lastModified}`
+
+  function agregarFotos(e) {
+    const nuevas = Array.from(e.target.files || [])
+    setFotos(prev => {
+      const vistas = new Set(prev.map(claveFoto))
+      return [...prev, ...nuevas.filter(x => !vistas.has(claveFoto(x)))]
+    })
+    // Sin esto, volver a elegir el mismo archivo no dispara el change.
+    e.target.value = ''
+  }
+
+  const quitarFoto = (i) => setFotos(prev => prev.filter((_, j) => j !== i))
 
   const faltantes = []
   if (!f.patente.trim())        faltantes.push('patente')
@@ -74,7 +94,9 @@ export default function Alta() {
         vehiculo:       f.vehiculo.trim(),
         kilometraje:    f.kilometraje ? Number(f.kilometraje) : null,
         cliente_nombre: f.cliente_nombre.trim(),
-        panos:          f.panos ? Number(f.panos) : null,
+        telefono:       f.telefono.trim() || null,
+        panos:          f.panos      ? Number(f.panos)      : null,
+        dias_chapa:     f.dias_chapa ? Number(f.dias_chapa) : null,
         compania:       f.compania.trim(),
         productor:      f.productor.trim() || null,
         perito:         f.perito.trim() || null,
@@ -125,15 +147,33 @@ export default function Alta() {
             <Campo label="Vehículo (marca y modelo)" obligatorio>
               <input className="t-input" value={f.vehiculo} onChange={set('vehiculo')} placeholder="Renault Alaskan" />
             </Campo>
-            <Campo label="Cliente" obligatorio ancho>
+            <Campo label="Cliente" obligatorio>
               <input className="t-input" value={f.cliente_nombre} onChange={set('cliente_nombre')}
                      placeholder="María Fernanda Agüero" />
+            </Campo>
+            <Campo label="Teléfono del cliente">
+              <input type="tel" className="t-input" value={f.telefono} onChange={set('telefono')}
+                     inputMode="tel" autoComplete="tel" placeholder="387 415-2233" />
             </Campo>
             <Campo label="Kilometraje">
               <input type="number" className="t-input" value={f.kilometraje} onChange={set('kilometraje')} placeholder="82400" />
             </Campo>
-            <Campo label="Paños a trabajar">
-              <input type="number" className="t-input" value={f.panos} onChange={set('panos')} placeholder="3" />
+          </div>
+        </section>
+
+        {/* Trabajo asignado: lo que hay que hacer, cargado al ingreso. No se
+            recalcula solo y no reemplaza a la fecha pactada, que es el
+            compromiso de entrega y vive en PLAZOS. */}
+        <section className="t-panel">
+          <p className="t-legend">TRABAJO ASIGNADO</p>
+          <div className="t-grid">
+            <Campo label="Paños">
+              <input type="number" min="0" className="t-input" value={f.panos}
+                     onChange={set('panos')} placeholder="3" />
+            </Campo>
+            <Campo label="Días de chapa">
+              <input type="number" min="0" className="t-input" value={f.dias_chapa}
+                     onChange={set('dias_chapa')} placeholder="5" />
             </Campo>
           </div>
         </section>
@@ -191,13 +231,27 @@ export default function Alta() {
         <section className="t-panel">
           <p className="t-legend">RESPALDO DE INGRESO</p>
           <div className="t-grid">
+            {/* Sin `capture`: forzarlo abre la cámara de una y no deja elegir
+                fotos ya sacadas, que es como trabaja el taller cuando el auto
+                entró hace un rato. El celular ofrece cámara igual. */}
             <label className={`t-drop ancho${fotos.length ? ' cargado' : ''}`} style={{ gridColumn: '1 / -1' }}>
               {fotos.length
-                ? `${fotos.length} foto${fotos.length > 1 ? 's' : ''} de ingreso`
-                : 'Sacar fotos del estado en que llegó'}
-              <input type="file" accept="image/*" capture="environment" multiple hidden
-                     onChange={e => setFotos(Array.from(e.target.files || []))} />
+                ? `Agregar más fotos (${fotos.length} cargada${fotos.length > 1 ? 's' : ''})`
+                : 'Sacar o elegir fotos del estado en que llegó'}
+              <input type="file" accept="image/*" multiple hidden onChange={agregarFotos} />
             </label>
+
+            {fotos.length > 0 && (
+              <ul className="t-adjuntos" style={{ gridColumn: '1 / -1' }}>
+                {fotos.map((x, i) => (
+                  <li key={claveFoto(x)} className="t-adjunto">
+                    <span className="t-adjunto-n">{x.name}</span>
+                    <button type="button" className="t-adjunto-x" onClick={() => quitarFoto(i)}
+                            aria-label={`Quitar ${x.name}`}>✕</button>
+                  </li>
+                ))}
+              </ul>
+            )}
             <label className={`t-drop${ordenInterna ? ' cargado' : ''}`}>
               {ordenInterna ? ordenInterna.name : 'Orden de trabajo interna (PDF)'}
               <input type="file" accept="application/pdf" hidden
