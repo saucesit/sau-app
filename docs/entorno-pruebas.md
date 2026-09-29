@@ -29,8 +29,13 @@ Ningún archivo contiene contraseñas, claves ni datos de clientes.
 1. Liberar espacio en `C:` (hoy quedan 2,7 GB y hacen falta ~15).
 2. `wsl --install` y reiniciar.
 3. Instalar Docker Desktop y mover su disco a `D:`.
-4. Resolver lo de la auditoría: sin eso, `supabase start` corta en la migración
-   `0019`.
+4. **Saltear `0019` y `0021`.** Son las dos únicas migraciones que rompen contra
+   una base vacía: hacen `alter table presupuesto` y esa tabla no la crea
+   ninguna migración. Se comprobó que son las **únicas** referencias duras a las
+   siete tablas que faltan — el resto son comentarios. Sacándolas de la carpeta,
+   el taller queda completo y solo quedan inutilizables Presupuestos, Pedidos y
+   el panel de la contadora, que no entran en esta prueba. Así no hace falta
+   decidir todavía lo de `0018b`.
 5. `supabase start`.
 6. Copiar `.env.desarrollo.example` a `.env.desarrollo` y completarlo con lo que
    imprima `supabase status`.

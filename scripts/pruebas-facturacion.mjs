@@ -137,6 +137,19 @@ console.log('\n4. NO APLICA Y VUELTA ATRÁS')
   check('volver a pendiente borra el número de factura',
         m2.estado_compania === 'pendiente' && m2.factura_compania === null,
         `${m2.estado_compania} / ${m2.factura_compania}`)
+
+  // El campo actual se borra, pero el historial no: la bitácora tiene que
+  // poder responder "con qué número se había facturado esto".
+  const { body: ev } = await rest(duena,
+    `vehiculo_evento?vehiculo_id=eq.${VEH}&tipo=eq.facturacion&select=texto&order=created_at.desc&limit=1`)
+  const txt = ev?.[0]?.texto || ''
+  check('la bitácora conserva el estado anterior', /antes:\s*facturado/i.test(txt), txt)
+  check('y el número con el que se había facturado', /A-0001-00012345/.test(txt), txt)
+
+  const { body: evs } = await rest(duena,
+    `vehiculo_evento?vehiculo_id=eq.${VEH}&tipo=eq.facturacion&select=texto&order=created_at.desc`)
+  check('el movimiento original sigue estando',
+        (evs || []).some(e => /facturado con factura A-0001-00012345/.test(e.texto)))
 }
 
 // ── 5. Validaciones ───────────────────────────────────────────────
@@ -157,24 +170,118 @@ console.log('\n5. VALIDACIONES')
   check('no se puede facturar por API directa, sin bitácora', !c.ok, `status ${c.status}`)
 }
 
-// ── 6. Permisos ───────────────────────────────────────────────────
-console.log('\n6. PERMISOS')
+// ── 6. Sin taller.montos: ni ve la plata ni factura ───────────────
+// No alcanza con que la pantalla no dibuje el panel: el servidor no tiene que
+// mandarle un solo importe ni dejarlo facturar por más que llame al RPC a mano.
+console.log('\n6. SIN taller.montos')
 {
-  const r = await rpc(chapista, 'taller_registrar_facturacion',
-    { p_vehiculo: VEH, p_rubro: 'compania', p_estado: 'facturado' })
-  check('quien no tiene taller.montos no puede facturar', !r.ok)
+  for (const u of [chapista, recepcion]) {
+    const quien = u.email.split('@')[0]
 
-  const m = await monto(recepcion)
-  check('y tampoco ve los importes', m === null)
+    const m = await rest(u, `vehiculo_monto?vehiculo_id=eq.${VEH}&select=*`)
+    check(`${quien}: el servidor no le manda ningún importe`,
+          Array.isArray(m.body) && m.body.length === 0, JSON.stringify(m.body))
+
+    // Tampoco por la vía de pedir las columnas sueltas.
+    const s = await rest(u, `vehiculo_monto?select=monto_compania,estado_compania,factura_compania`)
+    check(`${quien}: tampoco pidiendo las columnas sueltas`,
+          Array.isArray(s.body) && s.body.length === 0, JSON.stringify(s.body))
+
+    const f = await rpc(u, 'taller_registrar_facturacion',
+      { p_vehiculo: VEH, p_rubro: 'compania', p_estado: 'facturado', p_factura: 'X-1' })
+    check(`${quien}: no puede facturar`, !f.ok, JSON.stringify(f.body))
+
+    const c = await rpc(u, 'taller_registrar_cobro',
+      { p_vehiculo: VEH, p_campo: 'cobro_compania', p_valor: true })
+    check(`${quien}: tampoco puede registrar cobros`, !c.ok)
+  }
+
+  // Que sí vea el vehículo: el bloqueo es de plata, no de trabajo.
+  const v = await rest(chapista, `vehiculo?id=eq.${VEH}&select=*`)
+  check('pero sí ve el vehículo y su trabajo asignado',
+        v.body?.[0]?.id === VEH)
+  check('y la fila del vehículo no trae ningún importe pegado',
+        v.body?.[0] && !Object.keys(v.body[0]).some(k => /^monto_|^estado_|^factura_/.test(k)),
+        Object.keys(v.body?.[0] || {}).join(','))
 }
 
-// ── 7. Se puede facturar antes de entregar ────────────────────────
-console.log('\n7. FACTURAR ANTES DE ENTREGAR')
+// ── 7. Otra empresa: ni consulta ni modifica ──────────────────────
+console.log('\n7. AISLAMIENTO ENTRE EMPRESAS')
+{
+  const ajeno = await login('almacen@local.test')   // está en La Esquina, no en el taller
+
+  const ver = await rest(ajeno, `vehiculo?id=eq.${VEH}&select=id`)
+  check('no ve el vehículo de la otra empresa',
+        Array.isArray(ver.body) && ver.body.length === 0, JSON.stringify(ver.body))
+
+  const lista = await rest(ajeno, 'vehiculo?select=id')
+  check('ni listando todos los vehículos',
+        Array.isArray(lista.body) && lista.body.length === 0, JSON.stringify(lista.body))
+
+  const mon = await rest(ajeno, `vehiculo_monto?vehiculo_id=eq.${VEH}&select=*`)
+  check('no ve sus importes', Array.isArray(mon.body) && mon.body.length === 0)
+
+  const bit = await rest(ajeno, `vehiculo_evento?vehiculo_id=eq.${VEH}&select=texto`)
+  check('no ve su bitácora', Array.isArray(bit.body) && bit.body.length === 0)
+
+  const mod = await rest(ajeno, `vehiculo?id=eq.${VEH}`, {
+    method: 'PATCH', headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ cliente_nombre: 'INTRUSO' }),
+  })
+  check('no puede modificarlo',
+        !mod.ok || (Array.isArray(mod.body) && mod.body.length === 0), `status ${mod.status}`)
+
+  const fact = await rpc(ajeno, 'taller_registrar_facturacion',
+    { p_vehiculo: VEH, p_rubro: 'compania', p_estado: 'facturado', p_factura: 'Z-9' })
+  check('no puede facturarlo', !fact.ok, JSON.stringify(fact.body))
+
+  const avan = await rpc(ajeno, 'taller_validar_avance', { p_vehiculo: VEH })
+  check('no puede moverlo de etapa', !avan.ok)
+
+  // Y que de verdad no lo tocó.
+  const { body: despues } = await rest(duena, `vehiculo?id=eq.${VEH}&select=cliente_nombre`)
+  check('el vehículo quedó intacto', despues?.[0]?.cliente_nombre !== 'INTRUSO',
+        despues?.[0]?.cliente_nombre)
+}
+
+// ── 8. Se puede facturar antes de entregar ────────────────────────
+console.log('\n8. FACTURAR ANTES DE ENTREGAR')
 {
   const { body: v } = await rest(duena, `vehiculo?id=eq.${VEH}&select=etapa`)
   const r = await rpc(duena, 'taller_registrar_facturacion',
     { p_vehiculo: VEH, p_rubro: 'compania', p_estado: 'facturado', p_factura: 'B-0002-00000099' })
   check(`se factura con el auto todavía en ${v[0].etapa}`, r.ok, JSON.stringify(r.body))
+}
+
+// ── 9. Los totales del tablero ────────────────────────────────────
+// El total lo arma el navegador, así que se prueba la función directamente
+// contra los datos que devuelve el servidor.
+console.log('\n9. TOTALES DEL TABLERO')
+{
+  const { totalesAFacturar } = await import('../src/lib/taller.js')
+
+  const { body: activos } = await rest(duena, 'vehiculo?etapa=neq.entregado&select=id,etapa')
+  const { body: montos }  = await rest(duena, 'vehiculo_monto?select=*')
+  const porId = Object.fromEntries((montos || []).map(m => [m.vehiculo_id, m]))
+  const unidos = (activos || []).map(v => ({ ...v, ...(porId[v.id] || {}) }))
+
+  const t = totalesAFacturar(unidos)
+  const aMano = unidos.reduce((s, v) =>
+    s + (v.estado_compania === 'pendiente' ? Number(v.monto_compania || 0) : 0), 0)
+  check('el total de compañía suma solo lo pendiente', t.compania === aMano, `${t.compania} vs ${aMano}`)
+
+  const facturado = unidos.find(v => v.estado_compania === 'facturado')
+  check('un rubro facturado no suma',
+        !facturado || totalesAFacturar([facturado]).compania === 0)
+
+  const { body: entregados } = await rest(duena, 'vehiculo?etapa=eq.entregado&select=id,etapa&limit=5')
+  const entUnidos = (entregados || []).map(v => ({ ...v, ...(porId[v.id] || {}) }))
+  check('los entregados no suman aunque tengan pendiente',
+        totalesAFacturar(entUnidos).compania === 0
+        && totalesAFacturar(entUnidos).franquicia === 0
+        && totalesAFacturar(entUnidos).particular === 0)
+  check('pero conservan sus importes para consultarlos',
+        entUnidos.length === 0 || entUnidos.some(v => Number(v.monto_compania || 0) > 0))
 }
 
 console.log(`\n${'='.repeat(52)}`)

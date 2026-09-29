@@ -98,11 +98,14 @@ create or replace function taller_registrar_facturacion(
 )
 returns void language plpgsql security definer set search_path = public as $$
 declare
-  v_empresa uuid;
-  v_etapa   text;
-  v_label   text;
-  v_estado  text;
-  v_factura text;
+  v_empresa     uuid;
+  v_etapa       text;
+  v_label       text;
+  v_estado      text;
+  v_factura     text;
+  v_estado_ant  text;
+  v_factura_ant text;
+  v_antes       text;
 begin
   if p_rubro not in ('compania', 'franquicia', 'particular') then
     raise exception 'Rubro de facturación inválido: %', p_rubro;
@@ -116,6 +119,13 @@ begin
   if not tiene_permiso_taller(v_empresa, 'taller.montos') then
     raise exception 'No tenés permiso para registrar la facturación';
   end if;
+
+  -- Lo que había antes, para que quede en la bitácora. El campo actual se
+  -- borra al salir de facturado, pero el número con el que se facturó alguna
+  -- vez no se pierde: queda escrito en el movimiento.
+  execute format('select %I, %I from vehiculo_monto where vehiculo_id = $1',
+                 'estado_' || p_rubro, 'factura_' || p_rubro)
+    into v_estado_ant, v_factura_ant using p_vehiculo;
 
   -- El número de factura solo tiene sentido si está facturado: al volver a
   -- pendiente o a no aplica se borra, así no queda un número colgado.
@@ -138,6 +148,14 @@ begin
     when 'franquicia' then 'Franquicia'
     else 'Particular' end;
 
+  v_antes := ' (antes: ' ||
+    case coalesce(v_estado_ant, 'pendiente')
+      when 'facturado' then 'facturado'
+      when 'no_aplica' then 'no aplica'
+      else 'pendiente'
+    end ||
+    coalesce(', factura ' || v_factura_ant, '') || ')';
+
   insert into vehiculo_evento (vehiculo_id, tipo, etapa, texto)
   values (p_vehiculo, 'facturacion', v_etapa,
           v_label || ': ' ||
@@ -146,7 +164,8 @@ begin
                  coalesce(' con factura ' || v_factura, ' (sin número de factura)')
             when 'no_aplica' then 'marcado como no aplica'
             else 'vuelve a pendiente de facturar'
-          end);
+          end
+          || v_antes);
 end;
 $$;
 
