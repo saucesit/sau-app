@@ -422,7 +422,7 @@ control (`src/pages/taller/`) o la clásica (`src/pages/taller/clasico/`).
 | Pizarra | `src/pages/taller/Tablero.jsx` | **Funcional.** KPIs, seis etapas, cola de decisiones, panel de selección. Un clic selecciona, doble clic abre la ficha; en celular el toque abre la ficha |
 | Alta de vehículo | `src/pages/taller/Alta.jsx` | **Funcional, fotos y PDF incluidos.** Las fotos se acumulan entre tandas y se pueden quitar |
 | Ficha del vehículo | `src/pages/taller/Ficha.jsx` | **Funcional.** Etapas, validación, excepciones, cobros, entrega, bitácora, teléfono |
-| Archivo de entregados | `src/pages/taller/Entregados.jsx` | **Funcional en modo consulta.** Búsqueda por patente, cliente, vehículo o siniestro; agrupado por año; abre la ficha completa. **No marca facturado**: falta la regla de Forani |
+| Archivo de entregados | `src/pages/taller/Entregados.jsx` | **Funcional en modo consulta.** Búsqueda por patente, cliente, vehículo o siniestro; agrupado por año; abre la ficha completa. **No marca facturado**: facturado y cobrado son conceptos separados y ya está definido que no se mezclan; falta definir cómo se registra la facturación |
 | Administración | `src/pages/taller/Admin.jsx` | **Funcional.** Equipo, perfiles, etapas habilitadas, invitaciones |
 | Dashboard separado | — | **No existe.** Los indicadores están arriba de la pizarra |
 

@@ -13,10 +13,11 @@ import { patenteLegible, fmtFecha, fmtMonto, total, aFecha } from '../../lib/tal
  * busca la patente y se abre la misma ficha de siempre, con sus fotos, sus
  * órdenes firmadas y su bitácora completa.
  *
- * Lo que NO está todavía, a propósito: marcar como facturado. Facturado y
- * cobrado son cosas distintas en un taller (se factura a la compañía y se
- * cobra a sesenta días) y reutilizar las validaciones de cobro para eso las
- * dejaría mintiendo. Falta la regla de Forani.
+ * Lo que NO está todavía, a propósito: marcar como facturado. Ya está definido
+ * que facturado y cobrado son dos cosas separadas —se factura a la compañía y
+ * se cobra a sesenta días—, así que las validaciones de cobro no se reutilizan
+ * para eso. Lo que falta definir es cómo se registra la facturación: si lleva
+ * su propio tilde por rubro, fecha y número de factura, y quién la marca.
  */
 
 const PAGINA = 40
