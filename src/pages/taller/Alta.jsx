@@ -22,7 +22,8 @@ export default function Alta() {
 
   const hoy = new Date().toISOString().slice(0, 10)
   const [f, setF] = useState({
-    patente: '', vehiculo: '', kilometraje: '', cliente_nombre: '', telefono: '', panos: '',
+    patente: '', vehiculo: '', kilometraje: '', cliente_nombre: '', telefono: '',
+    panos: '', dias_chapa: '',
     compania: '', productor: '', perito: '', nro_siniestro: '',
     fecha_ingreso: hoy, fecha_pactada: '',
     monto_compania: '', monto_franquicia: '', monto_particular: '',
@@ -94,7 +95,8 @@ export default function Alta() {
         kilometraje:    f.kilometraje ? Number(f.kilometraje) : null,
         cliente_nombre: f.cliente_nombre.trim(),
         telefono:       f.telefono.trim() || null,
-        panos:          f.panos ? Number(f.panos) : null,
+        panos:          f.panos      ? Number(f.panos)      : null,
+        dias_chapa:     f.dias_chapa ? Number(f.dias_chapa) : null,
         compania:       f.compania.trim(),
         productor:      f.productor.trim() || null,
         perito:         f.perito.trim() || null,
@@ -156,8 +158,22 @@ export default function Alta() {
             <Campo label="Kilometraje">
               <input type="number" className="t-input" value={f.kilometraje} onChange={set('kilometraje')} placeholder="82400" />
             </Campo>
-            <Campo label="Paños a trabajar">
-              <input type="number" className="t-input" value={f.panos} onChange={set('panos')} placeholder="3" />
+          </div>
+        </section>
+
+        {/* Trabajo asignado: lo que hay que hacer, cargado al ingreso. No se
+            recalcula solo y no reemplaza a la fecha pactada, que es el
+            compromiso de entrega y vive en PLAZOS. */}
+        <section className="t-panel">
+          <p className="t-legend">TRABAJO ASIGNADO</p>
+          <div className="t-grid">
+            <Campo label="Paños">
+              <input type="number" min="0" className="t-input" value={f.panos}
+                     onChange={set('panos')} placeholder="3" />
+            </Campo>
+            <Campo label="Días de chapa">
+              <input type="number" min="0" className="t-input" value={f.dias_chapa}
+                     onChange={set('dias_chapa')} placeholder="5" />
             </Campo>
           </div>
         </section>

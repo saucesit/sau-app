@@ -341,8 +341,11 @@ console.log('\n9. COBROS SOLO POR LA FUNCIÓN')
 
   const { body: ev } = await rest(users.admin,
     `vehiculo_evento?vehiculo_id=eq.${VEH}&tipo=eq.cobro&select=texto&order=created_at.desc&limit=1`)
+  // Se afirma el rubro y que quedó validado, no la redacción exacta: 0033
+  // reescribe el texto para que no diga "facturada", que ahora es otra cosa.
   check('y dejó el movimiento en la bitácora',
-        /Orden de compañía facturada: validado/.test(ev[0]?.texto || ''), ev[0]?.texto)
+        /compañía/i.test(ev[0]?.texto || '') && /validado/.test(ev[0]?.texto || ''),
+        ev[0]?.texto)
 
   // Los montos en sí se siguen pudiendo editar
   const monto = await rest(users.admin, `vehiculo_monto?vehiculo_id=eq.${VEH}`, {

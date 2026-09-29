@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
-import { patenteLegible, fmtFecha, fmtMonto, total, aFecha } from '../../lib/taller'
+import { patenteLegible, fmtFecha, fmtMonto, total, aFecha, facturacionCompleta } from '../../lib/taller'
 
 /**
  * Archivo de vehículos entregados.
@@ -36,6 +36,11 @@ function Fila({ v, verMontos, onAbrir }) {
       <span className="t-row-cia">{v.compania}</span>
       <span className="t-row-fec">{fmtFecha(v.fecha_entrega)}</span>
       {verMontos && <span className="t-row-tot">{fmtMonto(total(v))}</span>}
+      {verMontos && (
+        <span className={`t-row-fact${facturacionCompleta(v) ? ' ok' : ''}`}>
+          {facturacionCompleta(v) ? 'Facturado' : 'Pendiente'}
+        </span>
+      )}
     </button>
   )
 }
@@ -166,6 +171,7 @@ export default function Entregados() {
               <span>Compañía</span>
               <span>Entrega</span>
               {verMontos && <span>Total</span>}
+              {verMontos && <span>Facturación</span>}
             </div>
 
             {grupos.map(g => (

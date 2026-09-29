@@ -125,6 +125,63 @@ export function alertas(v) {
   return out
 }
 
+/**
+ * Los tres rubros que se facturan y se cobran por separado.
+ *
+ * Facturar y cobrar son dos cosas distintas y no se tocan entre sí: el taller
+ * factura cuando la compañía le aprueba la orden, y cobra cuando le pagan, que
+ * puede ser dos meses después. Cada rubro lleva las dos marcas por separado.
+ */
+export const RUBROS = [
+  { id: 'compania',   label: 'Compañía',   monto: 'monto_compania',   estado: 'estado_compania',   factura: 'factura_compania',   cobro: 'cobro_compania'   },
+  { id: 'franquicia', label: 'Franquicia', monto: 'monto_franquicia', estado: 'estado_franquicia', factura: 'factura_franquicia', cobro: 'cobro_franquicia' },
+  { id: 'particular', label: 'Particular', monto: 'monto_particular', estado: 'estado_particular', factura: 'factura_particular', cobro: 'cobro_particular' },
+]
+
+export const ESTADOS_FACTURACION = [
+  { id: 'pendiente', label: 'Pendiente' },
+  { id: 'facturado', label: 'Facturado' },
+  { id: 'no_aplica', label: 'No aplica' },
+]
+
+/** Un rubro sin estado cargado cuenta como pendiente: es el default de la base. */
+export function estadoFacturacion(v, rubro) {
+  return v?.[rubro.estado] || 'pendiente'
+}
+
+/**
+ * Lo que falta facturar de un rubro. Facturado y no aplica no suman: por eso
+ * el total del tablero baja solo cuando alguien marca la factura.
+ */
+export function pendienteFacturar(v, rubro) {
+  return estadoFacturacion(v, rubro) === 'pendiente' ? Number(v[rubro.monto] || 0) : 0
+}
+
+/**
+ * Totales a facturar del tablero, por rubro.
+ *
+ * Suma únicamente los vehículos que están adentro del taller: un entregado deja
+ * de sumar aunque no se haya facturado, y conserva toda su información en el
+ * archivo. Quien llame a esto tiene que tener taller.montos — sin ese permiso
+ * la base ni siquiera devuelve los montos y el resultado da cero.
+ */
+export function totalesAFacturar(vehiculos) {
+  const out = { compania: 0, franquicia: 0, particular: 0 }
+  vehiculos.forEach(v => {
+    if (v.etapa === 'entregado') return
+    RUBROS.forEach(r => { out[r.id] += pendienteFacturar(v, r) })
+  })
+  return out
+}
+
+/**
+ * Un vehículo está facturado cuando no le queda ningún importe pendiente.
+ * Un rubro en cero no cuenta aunque esté en pendiente: no hay nada que facturar.
+ */
+export function facturacionCompleta(v) {
+  return RUBROS.every(r => pendienteFacturar(v, r) === 0)
+}
+
 /** Lo que falta cobrar de un vehículo: cada validación tildada descuenta su monto */
 export function pendiente(v) {
   return (v.cobro_compania   ? 0 : Number(v.monto_compania   || 0))

@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 import {
   ETAPAS_ACTIVAS, etapaLabel, excepcionCfg,
   diasEnTaller, estado, proximaAccion, patenteLegible, pendiente, fmtMonto, aFecha,
+  RUBROS, totalesAFacturar, pendienteFacturar,
 } from '../../lib/taller'
 import { useCelular } from '../../lib/useCelular'
 
@@ -134,6 +135,11 @@ export default function Tablero() {
     return f && f.getTime() < Date.now()
   }).length
 
+  // Solo lo pendiente de facturar, y solo de lo que está adentro del taller.
+  // `vehiculos` ya viene sin entregados; la función lo vuelve a filtrar para
+  // que el total no dependa de cómo se cargó la lista.
+  const aFacturar = useMemo(() => totalesAFacturar(vehiculos), [vehiculos])
+
   const elegido = vehiculos.find(v => v.id === sel) || null
 
   if (cargando) {
@@ -172,6 +178,20 @@ export default function Tablero() {
             <div className="t-kpi-l">FUERA DE PLAZO</div>
           </div>
         </div>
+
+        {/* La plata la ve solo quien tiene taller.montos. Sin ese permiso la
+            base no devuelve los montos, pero igual no dibujamos la fila: si no,
+            el operario ve tres carteles en cero y parece que el taller no cobra. */}
+        {verMontos && (
+          <div className="t-kpis plata">
+            {RUBROS.map(r => (
+              <div key={r.id} className="t-kpi">
+                <div className="t-kpi-n money">{fmtMonto(aFacturar[r.id])}</div>
+                <div className="t-kpi-l">A FACTURAR · {r.label.toUpperCase()}</div>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="t-board-head">
           <h2 className="t-h2">Flujo de producción</h2>
@@ -233,9 +253,16 @@ function Seleccionado({ v, verMontos, onAbrir }) {
         <div className="t-kv"><dt>Compañía</dt><dd>{v.compania}</dd></div>
         <div className="t-kv"><dt>Etapa</dt><dd>{etapaLabel(v.etapa)}</dd></div>
         {v.panos ? <div className="t-kv"><dt>Paños</dt><dd>{v.panos}</dd></div> : null}
+        {v.dias_chapa ? <div className="t-kv"><dt>Días de chapa</dt><dd>{v.dias_chapa}</dd></div> : null}
         <div className="t-kv"><dt>En taller</dt><dd>{diasEnTaller(v)} días</dd></div>
         <div className="t-kv">
-          <dt>Pendiente</dt>
+          <dt>A facturar</dt>
+          <dd>{verMontos
+            ? fmtMonto(RUBROS.reduce((s, r) => s + pendienteFacturar(v, r), 0))
+            : <span className="t-oculto">sin permiso</span>}</dd>
+        </div>
+        <div className="t-kv">
+          <dt>Pendiente de cobro</dt>
           <dd>{verMontos ? fmtMonto(pendiente(v)) : <span className="t-oculto">sin permiso</span>}</dd>
         </div>
       </dl>

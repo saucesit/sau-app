@@ -40,6 +40,12 @@ Ningún archivo contiene contraseñas, claves ni datos de clientes.
         -v clave="LaQueElijas" -f scripts/seed-usuarios-locales.sql
    ```
 8. `npm run dev:local`.
+9. Verificar la facturación:
+   ```
+   SUPA_PASS="LaQueElijas" node scripts/pruebas-facturacion.mjs
+   ```
+   Corta sola si detecta que apunta a un `supabase.co`, para que no se dispare
+   contra producción por descuido.
 
 ## Usuarios que crea el paso 7
 

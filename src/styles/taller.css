@@ -97,6 +97,11 @@
 .t-kpi.plazo .t-kpi-n { color: var(--t-warn); }
 .t-kpi-l { font-family: var(--t-mono); font-size: 10px; letter-spacing: 0.1em; color: var(--t-ink-2); margin-top: 7px; }
 
+/* Fila de plata: los importes son largos, así que el número va más chico que
+   en los contadores y se apoya en el mismo alto de tarjeta. */
+.t-kpis.plata { margin-top: -10px; }
+.t-kpi-n.money { font-size: 20px; letter-spacing: -0.01em; }
+
 /* ── Pizarra ─────────────────────────────────────────────────── */
 .t-board-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
 .t-h2 { font-family: var(--t-cond); font-size: 17px; font-weight: 700; letter-spacing: 0.01em; }
@@ -242,6 +247,27 @@
 .t-toggle-i { font-family: var(--t-mono); font-size: 15px; color: var(--t-ink-3); }
 .t-toggle.si .t-toggle-i { color: var(--t-ready); }
 
+/* ── Facturación por rubro ───────────────────────────────────── */
+.t-rubro { border: 1px solid var(--t-rule-2); background: #fdfcfa; padding: 11px 12px; }
+.t-rubro + .t-rubro { margin-top: 8px; }
+.t-rubro-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 9px; }
+.t-rubro-n { font-size: 13px; font-weight: 600; }
+.t-rubro-m { font-family: var(--t-mono); font-size: 13px; font-variant-numeric: tabular-nums; }
+.t-opciones.tres { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.t-estado {
+  border: 1px solid var(--t-rule); background: var(--t-panel); padding: 8px 6px;
+  font-family: var(--t-mono); font-size: 10.5px; letter-spacing: 0.04em;
+  color: var(--t-ink-2); text-align: center;
+}
+.t-estado:hover:not(:disabled) { border-color: var(--t-ink-2); color: var(--t-ink); }
+.t-estado.elegido {
+  border-color: var(--t-ink); background: var(--t-ink); color: #f2efe9; font-weight: 600;
+  opacity: 1; cursor: default;
+}
+
+.t-row-fact { font-family: var(--t-mono); font-size: 10.5px; letter-spacing: 0.05em; color: var(--t-warn); }
+.t-row-fact.ok { color: var(--t-ready); }
+
 .t-bitacora { display: flex; flex-direction: column; gap: 11px; }
 .t-ev { border-left: 2px solid var(--t-rule); padding-left: 11px; }
 .t-ev.nota { border-left-color: var(--t-ink-2); }
@@ -272,7 +298,7 @@
   padding: 10px 12px; border-bottom: 1px solid var(--t-rule-2); font-size: 13px;
 }
 .t-tabla.con-montos .t-row {
-  grid-template-columns: 108px minmax(0, 1.3fr) minmax(0, 1.1fr) minmax(0, 0.9fr) 82px 116px;
+  grid-template-columns: 104px minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 0.9fr) 78px 112px 78px;
 }
 .t-row:hover { background: var(--t-panel-2); }
 .t-row > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -392,6 +418,12 @@
   .t-row-cli   { grid-column: 1; grid-row: 3; font-size: 12px; }
   .t-row-cia   { grid-column: 1; grid-row: 4; font-size: 11.5px; color: var(--t-ink-3); }
   .t-row-tot   { grid-column: 2; grid-row: 4; align-self: end; }
+  .t-row-fact  { grid-column: 2; grid-row: 3; text-align: right; }
+
+  /* Los tres totales de plata entran de a uno por fila en un teléfono. */
+  .t-kpis.plata { grid-template-columns: 1fr; margin-top: 0; }
+  .t-kpis.plata .t-kpi { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .t-kpis.plata .t-kpi-l { margin-top: 0; }
 }
 
 /* El riel con cuatro accesos y sus etiquetas no entra en un teléfono angosto:
