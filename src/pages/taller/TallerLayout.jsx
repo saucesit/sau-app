@@ -61,6 +61,17 @@ export default function TallerLayout() {
             <span className="t-rail-label">INGRESO</span>
           </NavLink>
 
+          {/* Archivo de entregados: consulta, no mueve nada. Lo ve cualquiera
+              que pueda ver el taller; los montos los filtra la base. */}
+          <NavLink to="/taller/entregados" className={claseRail} title="Vehículos entregados"
+                   aria-label="Vehículos entregados">
+            <Icono>
+              <path d="M2.5 4.5h8M2.5 8h8M2.5 11.5h5" />
+              <path d="M12 9.8l1.4 1.4 2.1-2.6" />
+            </Icono>
+            <span className="t-rail-label">ENTREGADOS</span>
+          </NavLink>
+
           {/* Administración del taller: solo para el dueño o quien él habilite */}
           {tienePermiso('empresa.admin') && (
             <NavLink to="/taller/admin" className={claseRail} title="Administración"

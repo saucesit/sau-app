@@ -39,7 +39,7 @@ function Cadena({ etapa }) {
 export default function Ficha() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { tienePermiso } = useAuth()
+  const { tienePermiso, tallerEtapas } = useAuth()
 
   const [v,        setV]        = useState(null)
   const [eventos,  setEventos]  = useState([])
@@ -53,6 +53,9 @@ export default function Ficha() {
   const verMontos     = tienePermiso('taller.montos')
   const puedeValidar  = tienePermiso('taller.validar')
   const puedeTrabajar = tienePermiso('taller.trabajar')
+  // El permiso solo no alcanza: hay que tener cargadas las etapas del oficio.
+  // Quien no las tiene veía el botón y recién al tocarlo le saltaba el error.
+  const sinEtapas     = puedeTrabajar && tallerEtapas.length === 0
 
   useEffect(() => { cargar() }, [id])
 
@@ -131,8 +134,10 @@ export default function Ficha() {
 
   return (
     <main className="t-page">
-      <button className="t-eyebrow" onClick={() => navigate('/taller')} style={{ cursor: 'pointer' }}>
-        ← VOLVER A LA PIZARRA
+      {/* Un entregado no está en la pizarra: se llegó desde el archivo. */}
+      <button className="t-eyebrow" style={{ cursor: 'pointer' }}
+              onClick={() => navigate(entregado ? '/taller/entregados' : '/taller')}>
+        {entregado ? '← VOLVER AL ARCHIVO' : '← VOLVER A LA PIZARRA'}
       </button>
 
       <div className="t-head" style={{ marginTop: 8 }}>
@@ -160,10 +165,15 @@ export default function Ficha() {
 
           <div className="t-acciones">
             {puedeTrabajar && !v.trabajo_hecho && !terminado && !v.excepcion && (
-              <button className="t-btn fantasma" onClick={marcarHecho} disabled={accion}
-                      style={{ background: '#fff' }}>
-                Marcar mi trabajo
-              </button>
+              sinEtapas
+                ? <p className="t-aviso" style={{ flex: 1 }}>
+                    Todavía no tenés etapas habilitadas, así que no podés marcar trabajo.
+                    Quien administra el taller tiene que configurar tu oficio en ADMIN.
+                  </p>
+                : <button className="t-btn fantasma" onClick={marcarHecho} disabled={accion}
+                          style={{ background: '#fff' }}>
+                    Marcar mi trabajo
+                  </button>
             )}
             {puedeValidar && !terminado && !v.excepcion && (
               <button className="t-btn urgente" onClick={validarAvance} disabled={accion}>
@@ -174,6 +184,10 @@ export default function Ficha() {
         </div>
       )}
 
+      {/* Un auto entregado no puede entrar en mecánica ni quedar detenido:
+          el panel quedaba visible con los botones muertos y un texto que decía
+          que "retoma en Entregado". */}
+      {!entregado && (
       <Panel legend="ESTADOS EN PARALELO">
         <div className="t-fila">
           {EXCEPCIONES.map(x => (
@@ -191,6 +205,7 @@ export default function Ficha() {
           No sacan el vehículo de su etapa. Al levantarlos, retoma en {etapaLabel(v.etapa)}.
         </p>
       </Panel>
+      )}
 
       {verMontos && (
         <Panel legend="FACTURACIÓN Y COBRO">
@@ -232,6 +247,9 @@ export default function Ficha() {
 
       <Panel legend="DATOS DEL CASO">
         <dl>
+          <Dato k="Teléfono del cliente" v={v.telefono
+            ? <a className="t-tel" href={`tel:${v.telefono.replace(/[^\d+]/g, '')}`}>{v.telefono}</a>
+            : null} />
           <Dato k="N° de siniestro" v={v.nro_siniestro} />
           <Dato k="Productor"       v={v.productor} />
           <Dato k="Perito"          v={v.perito} />

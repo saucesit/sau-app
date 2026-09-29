@@ -84,14 +84,29 @@ function diasHasta(fecha) {
   return Math.ceil((f.getTime() - Date.now()) / 86400000)
 }
 
-export const diasEnTaller = (v) => diasDesde(v.fecha_ingreso)
-export const diasEnEtapa  = (v) => diasDesde(v.etapa_desde)
+function diasEntre(desde, hasta) {
+  const a = aFecha(desde)
+  const b = aFecha(hasta)
+  if (!a || !b) return 0
+  return Math.max(0, Math.floor((b.getTime() - a.getTime()) / 86400000))
+}
+
+/**
+ * Cuánto estuvo el auto adentro. Si ya se entregó, el conteo se cierra en la
+ * fecha de entrega: si no, un trabajo entregado en 2024 sigue sumando días para
+ * siempre y el archivo muestra a todos los vehículos como demora crítica.
+ */
+export const diasEnTaller = (v) =>
+  v.fecha_entrega ? diasEntre(v.fecha_ingreso, v.fecha_entrega) : diasDesde(v.fecha_ingreso)
+
+export const diasEnEtapa = (v) => diasDesde(v.etapa_desde)
 
 /**
  * Alertas de un vehículo, ordenadas de más grave a menos.
  * Devuelve [] si está todo en plazo.
  */
 export function alertas(v) {
+  if (v.etapa === 'entregado') return []
   const out = []
   const enTaller = diasEnTaller(v)
   const enEtapa  = diasEnEtapa(v)
@@ -133,6 +148,11 @@ export function fmtMonto(n) {
  * Devuelve `motivo` solo cuando hay algo que decidir — eso arma la cola.
  */
 export function estado(v) {
+  // Un auto entregado ya no tiene alertas: salió del taller. Sin este corte, el
+  // archivo de entregados marca como vencido todo lo que se entregó hace tiempo.
+  if (v.etapa === 'entregado')
+    return { s: 'ready', tag: 'ENTREGADO', motivo: null }
+
   const enTaller = diasEnTaller(v)
   const enEtapa  = diasEnEtapa(v)
   const vence    = diasHasta(v.fecha_pactada)

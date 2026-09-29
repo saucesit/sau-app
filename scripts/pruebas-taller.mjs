@@ -352,6 +352,47 @@ console.log('\n9. COBROS SOLO POR LA FUNCIÓN')
   check('los montos sí se editan por API', monto.ok, `status ${monto.status}`)
 }
 
+// ── 10. Archivo de entregados ────────────────────────────────────
+// Depende de la sección 7: ahí ZZTEST01 quedó entregado.
+console.log('\n10. ARCHIVO DE ENTREGADOS')
+{
+  const pizarra = await rest(users.admin,
+    `vehiculo?empresa_id=eq.${EMPRESA_A}&etapa=neq.entregado&select=id`)
+  check('un entregado ya no aparece en la pizarra',
+        Array.isArray(pizarra.body) && !pizarra.body.some(v => v.id === VEH))
+
+  const archivo = await rest(users.admin,
+    `vehiculo?empresa_id=eq.${EMPRESA_A}&etapa=eq.entregado&select=id,patente`)
+  check('pero sí en el archivo', Array.isArray(archivo.body) && archivo.body.some(v => v.id === VEH))
+
+  const ajena = await rest(users.otraEmpresa,
+    `vehiculo?empresa_id=eq.${EMPRESA_A}&etapa=eq.entregado&select=id`)
+  check('empresa B no ve el archivo de la empresa A',
+        Array.isArray(ajena.body) && ajena.body.length === 0, JSON.stringify(ajena.body))
+
+  // La pantalla busca la patente normalizada: "zz test01" viaja como ZZTEST01.
+  const buscada = await rest(users.admin,
+    `vehiculo?empresa_id=eq.${EMPRESA_A}&etapa=eq.entregado&patente=ilike.*ZZTEST01*&select=id`)
+  check('la búsqueda por patente lo encuentra',
+        Array.isArray(buscada.body) && buscada.body.length === 1)
+
+  // El teléfono es dato de contacto, no de facturación: no va detrás de taller.montos.
+  const guardar = await rest(users.admin, `vehiculo?id=eq.${VEH}`, {
+    method: 'PATCH', headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ telefono: '387 000-1122' }),
+  })
+  check('el teléfono se puede cargar sin tocar el flujo', guardar.ok, `status ${guardar.status}`)
+
+  const leido = await rest(users.operario, `vehiculo?id=eq.${VEH}&select=telefono`)
+  check('y lo lee quien no ve montos', leido.body?.[0]?.telefono === '387 000-1122',
+        JSON.stringify(leido.body))
+
+  const montosOperario = await rest(users.operario, `vehiculo_monto?vehiculo_id=eq.${VEH}&select=monto_compania`)
+  check('el archivo no le muestra la plata a quien no tiene taller.montos',
+        Array.isArray(montosOperario.body) && montosOperario.body.length === 0,
+        JSON.stringify(montosOperario.body))
+}
+
 console.log(`\n${'='.repeat(52)}`)
 console.log(`RESULTADO: ${ok} pasan, ${fail} fallan`)
 if (fail) console.log('Fallaron:\n  - ' + fallos.join('\n  - '))
