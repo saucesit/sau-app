@@ -24,7 +24,7 @@ begin
       ('taller-a-sinetapas@prueba.sau',   'SinEtapas', v_a, 'empleado', array['taller.ver','taller.trabajar'], array[]::text[]),
       ('taller-a-coordinador@prueba.sau', 'Coord A',   v_a, 'empleado', array['taller.ver','taller.trabajar','taller.cargar','taller.validar'], array['chapa','preparacion','pintura','pre_entrega']),
       ('taller-a-admin@prueba.sau',       'Admin A',   v_a, 'empleado', array['taller.ver','taller.cargar','taller.validar','taller.montos'], array[]::text[]),
-      ('taller-a-completo@prueba.sau',    'Full A',    v_a, 'dueno',    array['taller.ver','taller.trabajar','taller.cargar','taller.validar','taller.montos','empresa.admin','taller.eliminar'], array['chapa','preparacion','pintura','pre_entrega']),
+      ('taller-a-completo@prueba.sau',    'Full A',    v_a, 'dueno',    array['taller.ver','taller.trabajar','taller.cargar','taller.validar','taller.montos','empresa.admin','taller.anular'], array['chapa','preparacion','pintura','pre_entrega']),
       -- Perfil Administrador: ve y opera todo, pero no borra ni toca el equipo.
       ('taller-a-administrador@prueba.sau','Admin Full', v_a, 'empleado', array['taller.ver','taller.trabajar','taller.cargar','taller.validar','taller.montos','reportes.ver'], array['chapa','pintura']),
       ('taller-b-admin@prueba.sau',       'Admin B',   v_b, 'empleado', array['taller.ver','taller.cargar','taller.validar','taller.montos'], array[]::text[])

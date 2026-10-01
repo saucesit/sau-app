@@ -83,12 +83,12 @@ export const TAREAS = [
     colorTexto:  'text-amber-700',
   },
   {
-    id: 'taller_elimina',
-    icon: '🗑️',
-    titulo: 'Puede eliminar vehículos',
-    descripcion: 'Borra una orden cargada por error. Sin esto se ve y se opera todo, pero no se borra nada',
-    permisos: ['taller.eliminar'],
-    clave: 'taller.eliminar',
+    id: 'taller_anula',
+    icon: '🚫',
+    titulo: 'Puede anular adjuntos',
+    descripcion: 'Marca como anulado un papel cargado por error, dejando el motivo. No borra nada',
+    permisos: ['taller.anular'],
+    clave: 'taller.anular',
     modulo: 'taller',
     colorActivo: 'bg-rose-600',
     colorFondo:  'bg-rose-50 border-rose-200',
@@ -122,9 +122,12 @@ export const PRESETS = [
     tareas: ['taller_trabajo'] },
   { id: 'admin_taller', label: 'Administrador', icon: '💲', modulo: 'taller',
     tareas: ['taller_trabajo', 'taller_coordina', 'taller_montos', 'reportes'] },
+  // Completo lo asigna SAU, no el cliente: lleva empresa.admin. Y NO lleva
+  // taller.eliminar, que queda reservado mientras borrar un vehículo siga
+  // llevándose su historial.
   { id: 'taller_completo', label: 'Completo', icon: '⭐', modulo: 'taller',
     tareas: ['taller_trabajo', 'taller_coordina', 'taller_montos', 'reportes',
-             'taller_elimina', 'equipo'] },
+             'taller_anula', 'equipo'] },
 ]
 
 // Una tarea sin `modulo` se ve siempre; las que lo tienen aparecen solo si la

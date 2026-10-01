@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { revisarAlcance, puedeGestionarEquipo } from '../_compartido/alcance.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -31,23 +32,15 @@ Deno.serve(async (req) => {
 
     const { nombre, apellido, email, password, empresa_id, permisos, rol } = await req.json()
 
-    // Verificar que tiene permiso para gestionar esta empresa
-    const { data: mem } = await caller
-      .from('membresia')
-      .select('rol, permisos')
-      .eq('empresa_id', empresa_id)
-      .eq('usuario_id', user.id)
-      .eq('activa', true)
-      .single()
+    // La autorización se resuelve contra la base, en la empresa destino, en
+    // cada llamada. Usar service_role no reemplaza este control.
+    const { ok: puedeGestionar, esSau } = await puedeGestionarEquipo(admin, user.id, empresa_id)
+    if (!puedeGestionar) throw new Error('Sin permisos para crear empleados en esta empresa')
 
-    if (!mem) throw new Error('Sin acceso a esta empresa')
-
-    const puedeGestionar =
-      ['admin', 'contadora'].includes(mem.rol) ||
-      mem.permisos?.includes('empresa.admin') ||
-      mem.permisos?.includes('empresa.rrhh')
-
-    if (!puedeGestionar) throw new Error('Sin permisos para crear empleados')
+    // Lo que pide se rechaza entero si se pasa del alcance. No se recorta en
+    // silencio: quien administra tiene que enterarse de que no se asignó.
+    const problema = revisarAlcance({ permisos, rol }, esSau)
+    if (problema) throw new Error(problema)
 
     // Crear el usuario en Supabase Auth (sin tocar la sesión actual)
     const { data: nuevo, error: errAuth } = await admin.auth.admin.createUser({
@@ -69,7 +62,7 @@ Deno.serve(async (req) => {
       // Lista blanca: administrar el equipo de UNA empresa no puede servir
       // para fabricar roles que antes abrían todas. 'admin' y 'contadora' son
       // de SAU y no se asignan desde acá.
-      rol: ['empleado', 'dueno'].includes(rol) ? rol : 'empleado',
+      rol: rol || 'empleado',
       permisos: permisos || ['ventas.crear', 'ventas.ver', 'caja.ver', 'reportes.ver'],
     })
 

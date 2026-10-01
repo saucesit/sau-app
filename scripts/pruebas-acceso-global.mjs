@@ -95,8 +95,11 @@ try {
       body: JSON.stringify({ rol: rolAtaque }),
     })
     const { body: ahora } = await rest(completo, `membresia?id=eq.${MEM}&select=rol`)
-    check(`se lo pudo cambiar (la policy lo permite, eso no cambió)`,
-          ahora?.[0]?.rol === rolAtaque, `status ${sube.status}`)
+    // Desde 0038 ni siquiera llega a cambiárselo: lo frena la guardia de
+    // membresías. Lo que sigue se comprueba igual, porque el acceso entre
+    // empresas tiene que estar cerrado aunque ese rol se consiga por otra vía.
+    check('ya ni puede cambiarse el rol', !sube.ok && ahora?.[0]?.rol !== rolAtaque,
+          `status ${sube.status} / rol ${ahora?.[0]?.rol}`)
 
     // Lo que importa: que no le sirva para nada.
     const esAdmin = await rpc(completo, 'es_admin_sau')
@@ -136,9 +139,8 @@ try {
       if (esAjeno) check('no modifica vehículos ajenos', !mod.ok)
     }
 
-    await restaurar()
     const { body: vuelta } = await rest(completo, `membresia?id=eq.${MEM}&select=rol`)
-    check(`vuelve a "${ROL_ORIGINAL}"`, vuelta?.[0]?.rol === ROL_ORIGINAL, vuelta?.[0]?.rol)
+    check(`sigue en "${ROL_ORIGINAL}"`, vuelta?.[0]?.rol === ROL_ORIGINAL, vuelta?.[0]?.rol)
   }
 
   // ── Que lo normal siga andando ──────────────────────────────────

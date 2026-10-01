@@ -117,7 +117,7 @@ console.log('\n2. ELIMINAR, SOLO COMPLETO')
   const descartable = await rest(completo, 'vehiculo', {
     method: 'POST', headers: { Prefer: 'return=representation' },
     body: JSON.stringify({
-      empresa_id: EMPRESA_A, patente: 'ZZBORRA1', vehiculo: 'PARA BORRAR',
+      empresa_id: EMPRESA_A, patente: 'ZZB' + String(Date.now()).slice(-5), vehiculo: 'PARA BORRAR',
       cliente_nombre: 'X', compania: 'Particular',
       fecha_ingreso: new Date().toISOString().slice(0, 10),
     }),
@@ -125,15 +125,16 @@ console.log('\n2. ELIMINAR, SOLO COMPLETO')
   const ID = descartable.body?.[0]?.id
   check('se crea un vehículo descartable', !!ID, JSON.stringify(descartable.body))
 
-  for (const [quien, u] of [['operario', operario], ['administrador', admin]]) {
+  for (const [quien, u] of [['operario', operario], ['administrador', admin], ['completo', completo]]) {
     await rest(u, `vehiculo?id=eq.${ID}`, { method: 'DELETE' })
     const { body: sigue } = await rest(completo, `vehiculo?id=eq.${ID}&select=id`)
     check(`${quien} no lo borra`, sigue?.length === 1)
   }
 
-  await rest(completo, `vehiculo?id=eq.${ID}`, { method: 'DELETE' })
+  // Desde 0038 taller.eliminar es de SAU: borrar se lleva el historial entero
+  // del vehículo, así que ningún cliente lo tiene, ni siquiera Completo.
   const { body: ya } = await rest(completo, `vehiculo?id=eq.${ID}&select=id`)
-  check('completo sí lo borra', ya?.length === 0)
+  check('tampoco completo: eliminar quedó reservado a SAU', ya?.length === 1)
 }
 
 // ── 3. Nadie borra bitácora ni adjuntos ───────────────────────────
@@ -250,58 +251,9 @@ console.log('\n8. NINGUNO SALE DE SU EMPRESA')
   check('el administrador no ve vehículos de otras', ajenos?.length === 0)
 }
 
-// ── 9. Qué se lleva puesto eliminar un vehículo ───────────────────
-// Esto no es una restricción: es documentar el comportamiento real, que es
-// más destructivo de lo que parece desde la pantalla.
-console.log('\n9. QUÉ PASA AL ELIMINAR UN VEHÍCULO')
-{
-  const marca = Date.now()
-  const alta = await rest(completo, 'vehiculo', {
-    method: 'POST', headers: { Prefer: 'return=representation' },
-    body: JSON.stringify({
-      empresa_id: EMPRESA_A, patente: 'ZZCASC' + String(marca).slice(-2),
-      vehiculo: 'PARA PROBAR LA CASCADA', cliente_nombre: 'X', compania: 'Particular',
-      fecha_ingreso: new Date().toISOString().slice(0, 10),
-    }),
-  })
-  const ID = alta.body?.[0]?.id
-
-  await rest(completo, 'vehiculo_evento', {
-    method: 'POST', body: JSON.stringify({ vehiculo_id: ID, tipo: 'nota', texto: 'Nota de prueba.' }),
-  })
-  const ruta = `${EMPRESA_A}/${ID}/foto_ingreso-${marca}-casc.png`
-  await subir(completo, ruta, 'x', 'image/png')
-  await rest(completo, 'vehiculo_archivo', {
-    method: 'POST', body: JSON.stringify({ vehiculo_id: ID, tipo: 'foto_ingreso', path: ruta, nombre: 'f.png' }),
-  })
-
-  const antes = {
-    montos:   (await rest(completo, `vehiculo_monto?vehiculo_id=eq.${ID}&select=vehiculo_id`)).body?.length,
-    eventos:  (await rest(completo, `vehiculo_evento?vehiculo_id=eq.${ID}&select=id`)).body?.length,
-    archivos: (await rest(completo, `vehiculo_archivo?vehiculo_id=eq.${ID}&select=id`)).body?.length,
-    enBucket: (await firmar(completo, ruta)).ok,
-  }
-  check('antes de borrar hay monto, bitácora, adjunto y archivo en el bucket',
-        antes.montos === 1 && antes.eventos >= 1 && antes.archivos === 1 && antes.enBucket,
-        JSON.stringify(antes))
-
-  await rest(completo, `vehiculo?id=eq.${ID}`, { method: 'DELETE' })
-
-  const despues = {
-    vehiculo: (await rest(completo, `vehiculo?id=eq.${ID}&select=id`)).body?.length,
-    montos:   (await rest(completo, `vehiculo_monto?vehiculo_id=eq.${ID}&select=vehiculo_id`)).body?.length,
-    eventos:  (await rest(completo, `vehiculo_evento?vehiculo_id=eq.${ID}&select=id`)).body?.length,
-    archivos: (await rest(completo, `vehiculo_archivo?vehiculo_id=eq.${ID}&select=id`)).body?.length,
-    enBucket: (await firmar(completo, ruta)).ok,
-  }
-  check('se borra el vehículo', despues.vehiculo === 0)
-  check('la cascada se lleva los montos', despues.montos === 0, String(despues.montos))
-  check('la cascada se lleva la bitácora entera', despues.eventos === 0, String(despues.eventos))
-  check('la cascada se lleva los registros de adjuntos', despues.archivos === 0, String(despues.archivos))
-  // Y este es el punto importante: el archivo en sí NO se borra.
-  check('pero el archivo queda huérfano en el bucket', despues.enBucket === true,
-        `enBucket=${despues.enBucket}`)
-}
+// La sección 9 —qué se lleva puesto eliminar un vehículo— se movió a
+// scripts/verificar-cascada.sql: desde 0038 ningún cliente puede borrar, así
+// que ya no se puede comprobar con una cuenta ficticia por la API.
 
 console.log(`\n${'='.repeat(52)}`)
 console.log(`RESULTADO: ${ok} pasan, ${fail} fallan`)

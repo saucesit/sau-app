@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { revisarAlcance, puedeGestionarEquipo } from '../_compartido/alcance.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -58,6 +59,24 @@ Deno.serve(async (req) => {
         }),
         { headers: { ...cors, 'Content-Type': 'application/json' } },
       )
+    }
+
+    // Una invitación puede haber estado guardada semanas. Antes de aplicarla se
+    // revalida todo de nuevo: que quien la emitió siga autorizado en esa
+    // empresa, y que lo que pidió siga dentro del alcance. Si algo cambió, no
+    // se aplica a medias: se rechaza y se pide una nueva.
+    const emisor = await puedeGestionarEquipo(admin, inv.creada_por, inv.empresa_id)
+    if (!emisor.ok) {
+      return fallo('Quien generó esta invitación ya no administra el equipo de la empresa. ' +
+                   'Pedile a quien corresponda que te mande una nueva.')
+    }
+    const fueraDeAlcance = revisarAlcance(
+      { permisos: inv.permisos, rol: inv.rol, taller_etapas: inv.taller_etapas },
+      emisor.esSau,
+    )
+    if (fueraDeAlcance) {
+      return fallo('Esta invitación quedó desactualizada: ' + fueraDeAlcance +
+                   ' Hay que emitir una nueva.')
     }
 
     let uid: string

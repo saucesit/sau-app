@@ -59,7 +59,7 @@ export default function Ficha() {
   const puedeValidar  = tienePermiso('taller.validar')
   const puedeTrabajar = tienePermiso('taller.trabajar')
   const puedeCargar   = tienePermiso('taller.cargar')
-  const puedeAnular   = tienePermiso('taller.eliminar')
+  const puedeAnular   = tienePermiso('taller.anular')
   // El permiso solo no alcanza: hay que tener cargadas las etapas del oficio.
   // Quien no las tiene veía el botón y recién al tocarlo le saltaba el error.
   const sinEtapas     = puedeTrabajar && tallerEtapas.length === 0

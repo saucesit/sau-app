@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { revisarAlcance, puedeGestionarEquipo } from '../_compartido/alcance.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -37,20 +38,16 @@ Deno.serve(async (req) => {
     if (!nombre?.trim()) throw new Error('Falta el nombre')
     if (!email?.trim()) throw new Error('Falta el email')
 
-    // El permiso se verifica contra la membresía real de quien llama, no contra
-    // lo que diga el pedido.
-    const { data: mem } = await admin
-      .from('membresia')
-      .select('rol, permisos')
-      .eq('empresa_id', empresa_id)
-      .eq('usuario_id', user.id)
-      .eq('activa', true)
-      .maybeSingle()
-
-    const puedeInvitar = mem && (
-      ['admin', 'contadora'].includes(mem.rol) || mem.permisos?.includes('empresa.admin')
-    )
+    // El permiso se verifica contra la membresía real de quien llama en la
+    // empresa destino, no contra lo que diga el pedido.
+    const { ok: puedeInvitar, esSau } = await puedeGestionarEquipo(admin, user.id, empresa_id)
     if (!puedeInvitar) throw new Error('No tenés permiso para invitar gente a esta empresa')
+
+    // Se rechaza entero lo que se pase del alcance, con el motivo. La
+    // invitación guarda permisos que después se aplican tal cual: dejar pasar
+    // algo acá es dejarlo pasar en la membresía.
+    const problema = revisarAlcance({ permisos, rol, taller_etapas }, esSau)
+    if (problema) throw new Error(problema)
 
     const correo = email.trim().toLowerCase()
 

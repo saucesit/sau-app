@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { ETAPAS_CON_OPERARIO, etapaLabel } from '../../lib/taller'
 import { PRESETS, TAREAS, tareasAPermisos, permisosATareas } from '../EquipoTareas'
+import { PERMISOS_RESERVADOS_SAU } from '../../lib/constants'
 
 /**
  * Centro de administración del taller.
@@ -15,7 +16,21 @@ import { PRESETS, TAREAS, tareasAPermisos, permisosATareas } from '../EquipoTare
  * poder hacer cada persona, y esa decisión viaja guardada en la invitación.
  */
 
-const PERFILES = PRESETS.filter(p => p.modulo === 'taller')
+const TODOS_LOS_PERFILES = PRESETS.filter(p => p.modulo === 'taller')
+
+/**
+ * Qué perfiles puede asignar quien está mirando.
+ *
+ * El perfil Completo lleva empresa.admin, y eso lo asigna SAU: un cliente no
+ * puede crear otro Completo ni quitárselo a nadie. No se muestra la opción
+ * porque el servidor la rechaza igual — acá solo evitamos ofrecer algo que va
+ * a fallar.
+ */
+function perfilesQuePuedeAsignar(esAdminSau) {
+  if (esAdminSau) return TODOS_LOS_PERFILES
+  return TODOS_LOS_PERFILES.filter(p =>
+    !tareasAPermisos(p.tareas).some(x => PERMISOS_RESERVADOS_SAU.includes(x)))
+}
 
 function resumenDeAccesos(permisos) {
   const ids = permisosATareas(permisos || [])
@@ -24,14 +39,14 @@ function resumenDeAccesos(permisos) {
 }
 
 /** Elegir perfil y, si trabaja en el taller, en qué etapas. */
-function Accesos({ perfil, setPerfil, etapas, setEtapas }) {
-  const trabaja = PERFILES.find(p => p.id === perfil)?.tareas.includes('taller_trabajo')
+function Accesos({ perfil, setPerfil, etapas, setEtapas, perfiles }) {
+  const trabaja = TODOS_LOS_PERFILES.find(p => p.id === perfil)?.tareas.includes('taller_trabajo')
 
   return (
     <>
       <p className="t-legend" style={{ marginTop: 16 }}>QUÉ VA A PODER HACER</p>
       <div className="t-opciones">
-        {PERFILES.map(p => (
+        {perfiles.map(p => (
           <button key={p.id} type="button"
                   className={`t-opcion${perfil === p.id ? ' elegida' : ''}`}
                   onClick={() => setPerfil(p.id)}>
@@ -71,7 +86,9 @@ function Accesos({ perfil, setPerfil, etapas, setEtapas }) {
 }
 
 export default function Admin() {
-  const { empresaActivaId, empresaActiva, user } = useAuth()
+  const { empresaActivaId, empresaActiva, user, profile } = useAuth()
+  // El perfil Completo solo lo ofrece SAU; para el cliente ni aparece.
+  const perfiles = perfilesQuePuedeAsignar(profile?.es_sau_admin === true)
 
   const [equipo,       setEquipo]       = useState([])
   const [invitaciones, setInvitaciones] = useState([])
@@ -126,7 +143,7 @@ export default function Admin() {
         nombre: nombre.trim(),
         email: email.trim(),
         rol: 'empleado',
-        permisos: tareasAPermisos(PERFILES.find(p => p.id === perfil)?.tareas || []),
+        permisos: tareasAPermisos(TODOS_LOS_PERFILES.find(p => p.id === perfil)?.tareas || []),
         taller_etapas: etapas,
       },
     })
@@ -139,7 +156,7 @@ export default function Admin() {
 
   function abrirEdicion(m) {
     const ids = permisosATareas(m.permisos || [])
-    const coincide = PERFILES.find(p => [...p.tareas].sort().join() === [...ids].sort().join())
+    const coincide = TODOS_LOS_PERFILES.find(p => [...p.tareas].sort().join() === [...ids].sort().join())
     setEditando(m)
     setPerfil(coincide?.id || 'operario')
     setEtapas(m.taller_etapas || [])
@@ -149,7 +166,7 @@ export default function Admin() {
 
   async function guardarEdicion() {
     setOcupado(true)
-    const permisos = tareasAPermisos(PERFILES.find(p => p.id === perfil)?.tareas || [])
+    const permisos = tareasAPermisos(TODOS_LOS_PERFILES.find(p => p.id === perfil)?.tareas || [])
     const { error: err } = await supabase.from('membresia')
       .update({ permisos, taller_etapas: etapas })
       .eq('id', editando.id)
@@ -224,7 +241,7 @@ export default function Admin() {
                 </div>
               </div>
 
-              <Accesos perfil={perfil} setPerfil={setPerfil} etapas={etapas} setEtapas={setEtapas} />
+              <Accesos perfil={perfil} setPerfil={setPerfil} etapas={etapas} setEtapas={setEtapas} perfiles={perfiles} />
 
               {error && <p className="t-error" style={{ marginTop: 14, marginBottom: 0 }}>{error}</p>}
 
@@ -253,7 +270,7 @@ export default function Admin() {
         <p className="t-sub">Cambiá qué puede hacer y en qué etapas trabaja.</p>
 
         <section className="t-panel" style={{ marginTop: 20 }}>
-          <Accesos perfil={perfil} setPerfil={setPerfil} etapas={etapas} setEtapas={setEtapas} />
+          <Accesos perfil={perfil} setPerfil={setPerfil} etapas={etapas} setEtapas={setEtapas} perfiles={perfiles} />
 
           {error && <p className="t-error" style={{ marginTop: 14, marginBottom: 0 }}>{error}</p>}
 
