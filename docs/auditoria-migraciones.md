@@ -166,3 +166,16 @@ Prefiero la primera: no toca archivos aplicados.
 - Los cuerpos de las funciones del taller contra su versión en producción.
 - Grants.
 - Si las edge functions del repositorio son las que están desplegadas.
+
+---
+
+## F. Agregado el 30/09/2026
+
+Apareció otra policy que existe en producción y que ninguna migración crea:
+
+- **`profile_empresa`** sobre `profile`, para select: deja leer el perfil de
+  quienes comparten empresa con uno. Es de la que depende que en la ficha se
+  vea quién subió cada documento, y que ADMIN muestre los nombres del equipo.
+
+Suma a la lista de la sección A2 y entra en la misma propuesta de la sección D.
+No se amplía el trabajo ahora; queda anotada.

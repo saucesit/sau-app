@@ -83,6 +83,18 @@ export const TAREAS = [
     colorTexto:  'text-amber-700',
   },
   {
+    id: 'taller_anula',
+    icon: '🚫',
+    titulo: 'Puede anular adjuntos',
+    descripcion: 'Marca como anulado un papel cargado por error, dejando el motivo. No borra nada',
+    permisos: ['taller.anular'],
+    clave: 'taller.anular',
+    modulo: 'taller',
+    colorActivo: 'bg-rose-600',
+    colorFondo:  'bg-rose-50 border-rose-200',
+    colorTexto:  'text-rose-700',
+  },
+  {
     id: 'equipo',
     icon: '👥',
     titulo: 'Gestiona el equipo',
@@ -99,11 +111,23 @@ export const PRESETS = [
   { id: 'vendedor',       label: 'Vendedor',      icon: '🛒', tareas: ['ventas', 'caja'] },
   { id: 'encargado',      label: 'Encargado',     icon: '⭐', tareas: ['ventas', 'caja', 'compras', 'reportes'] },
   { id: 'administrativo', label: 'Administrativo', icon: '💼', tareas: ['compras', 'reportes'] },
-  // Roles de taller de chapa y pintura: el operario nunca valida su propio trabajo
-  // ni ve montos; el coordinador valida pero tampoco ve precios.
-  { id: 'operario',       label: 'Operario',      icon: '🔧', modulo: 'taller', tareas: ['taller_trabajo'] },
-  { id: 'coordinador',    label: 'Coordinador',   icon: '✅', modulo: 'taller', tareas: ['taller_trabajo', 'taller_coordina'] },
-  { id: 'admin_taller',   label: 'Administración', icon: '💲', modulo: 'taller', tareas: ['taller_trabajo', 'taller_coordina', 'taller_montos', 'reportes'] },
+  // Los tres perfiles del taller de chapa y pintura.
+  //
+  // El operario nunca valida su propio trabajo, no ve un peso y no frena el
+  // auto: para eso está el reporte diario. Administrador ve y opera todo,
+  // pero no borra nada ni toca el equipo. Completo es el dueño del taller:
+  // administra su propia empresa y nada más — ninguno de los tres da acceso a
+  // otra empresa ni al panel de SAU.
+  { id: 'operario', label: 'Operario', icon: '🔧', modulo: 'taller',
+    tareas: ['taller_trabajo'] },
+  { id: 'admin_taller', label: 'Administrador', icon: '💲', modulo: 'taller',
+    tareas: ['taller_trabajo', 'taller_coordina', 'taller_montos', 'reportes'] },
+  // Completo lo asigna SAU, no el cliente: lleva empresa.admin. Y NO lleva
+  // taller.eliminar, que queda reservado mientras borrar un vehículo siga
+  // llevándose su historial.
+  { id: 'taller_completo', label: 'Completo', icon: '⭐', modulo: 'taller',
+    tareas: ['taller_trabajo', 'taller_coordina', 'taller_montos', 'reportes',
+             'taller_anula', 'equipo'] },
 ]
 
 // Una tarea sin `modulo` se ve siempre; las que lo tienen aparecen solo si la

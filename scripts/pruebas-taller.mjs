@@ -109,6 +109,14 @@ for (const [k, mail] of Object.entries({
 
 const { body: vs } = await rest(users.admin, `vehiculo?patente=eq.ZZTEST01&select=id,etapa`)
 const VEH = vs[0].id
+// Esta suite recorre la cadena completa y deja el vehículo entregado, así que
+// necesita el seed antes de cada corrida. Sin este aviso fallan doce pruebas
+// sin que se entienda por qué.
+if (vs[0].etapa === 'entregado') {
+  console.error('\nZZTEST01 quedó entregado de una corrida anterior.')
+  console.error('Corré primero:  supabase db query --linked -f scripts/seed-pruebas-taller.sql\n')
+  process.exit(1)
+}
 console.log(`\nVehículo de prueba: ${VEH} (etapa ${vs[0].etapa})\n`)
 
 // ── 1. Aislamiento entre empresas ────────────────────────────────
@@ -185,19 +193,25 @@ console.log('\n3. FLUJO DE ETAPAS')
 // ── 4. Excepciones ───────────────────────────────────────────────
 console.log('\n4. EXCEPCIONES')
 {
-  const x1 = await rpc(users.operario, 'taller_cambiar_excepcion',
+  // Desde 0035 frenar un auto es decisión de coordinación: el operario informa
+  // por el reporte diario, que sigue abierto para él.
+  const x0 = await rpc(users.operario, 'taller_cambiar_excepcion',
                        { p_vehiculo: VEH, p_excepcion: 'mecanica' })
-  check('operario puede activar una excepción', x1.ok, JSON.stringify(x1.body))
+  check('el operario ya no puede frenar un vehículo', !x0.ok, JSON.stringify(x0.body))
+
+  const x1 = await rpc(users.coordinador, 'taller_cambiar_excepcion',
+                       { p_vehiculo: VEH, p_excepcion: 'mecanica' })
+  check('el coordinador sí puede activar una excepción', x1.ok, JSON.stringify(x1.body))
 
   const { body: e } = await rest(users.admin, `vehiculo?id=eq.${VEH}&select=etapa,excepcion`)
   check('la excepción no cambia la etapa',
         e[0].etapa === 'preparacion' && e[0].excepcion === 'mecanica', JSON.stringify(e[0]))
 
-  const x2 = await rpc(users.operario, 'taller_cambiar_excepcion',
+  const x2 = await rpc(users.coordinador, 'taller_cambiar_excepcion',
                        { p_vehiculo: VEH, p_excepcion: 'inventada' })
   check('no se acepta una excepción inválida', !x2.ok)
 
-  await rpc(users.operario, 'taller_cambiar_excepcion', { p_vehiculo: VEH, p_excepcion: null })
+  await rpc(users.coordinador, 'taller_cambiar_excepcion', { p_vehiculo: VEH, p_excepcion: null })
   const { body: e2 } = await rest(users.admin, `vehiculo?id=eq.${VEH}&select=etapa,excepcion`)
   check('al levantarla, retoma en la misma etapa',
         e2[0].etapa === 'preparacion' && e2[0].excepcion === null)

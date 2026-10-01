@@ -7,6 +7,7 @@ import {
   diasEnTaller, diasEnEtapa, estado, proximaAccion, patenteLegible,
   pendiente, total, fmtMonto, fmtFecha,
   RUBROS, ESTADOS_FACTURACION, estadoFacturacion,
+  DOCUMENTOS_ENTREGA, TIPO_ARCHIVO,
 } from '../../lib/taller'
 
 function Panel({ legend, children }) {
@@ -52,10 +53,13 @@ export default function Ficha() {
   const [error,    setError]    = useState(null)
   // Número de factura en edición, por rubro. Se rellena con lo guardado.
   const [facturas, setFacturas] = useState({})
+  const [subiendo, setSubiendo] = useState(null)
 
   const verMontos     = tienePermiso('taller.montos')
   const puedeValidar  = tienePermiso('taller.validar')
   const puedeTrabajar = tienePermiso('taller.trabajar')
+  const puedeCargar   = tienePermiso('taller.cargar')
+  const puedeAnular   = tienePermiso('taller.anular')
   // El permiso solo no alcanza: hay que tener cargadas las etapas del oficio.
   // Quien no las tiene veía el botón y recién al tocarlo le saltaba el error.
   const sinEtapas     = puedeTrabajar && tallerEtapas.length === 0
@@ -68,7 +72,10 @@ export default function Ficha() {
       supabase.from('vehiculo').select('*').eq('id', id).single(),
       supabase.from('vehiculo_monto').select('*').eq('vehiculo_id', id).maybeSingle(),
       supabase.from('vehiculo_evento').select('*').eq('vehiculo_id', id).order('created_at', { ascending: false }),
-      supabase.from('vehiculo_archivo').select('*').eq('vehiculo_id', id),
+      // El autor NO se puede traer con un join embebido: autor_id apunta a
+      // auth.users, no a profile, y PostgREST no encuentra la relación. Se
+      // busca aparte, más abajo.
+      supabase.from('vehiculo_archivo').select('*').eq('vehiculo_id', id).order('created_at'),
     ])
     // Sin permiso taller.montos la consulta vuelve vacía y la ficha no muestra precios.
     setV(veh ? { ...veh, ...(monto || {}) } : null)
@@ -77,9 +84,22 @@ export default function Ficha() {
     setFacturas(Object.fromEntries(RUBROS.map(r => [r.id, monto?.[r.factura] || ''])))
 
     if (arch?.length) {
+      // Quién subió cada papel. La policy profile_empresa deja leer el perfil
+      // de los compañeros de empresa; si alguno no se encuentra, se muestra
+      // igual el documento sin el nombre.
+      const autores = [...new Set(arch.flatMap(a => [a.autor_id, a.anulado_por]).filter(Boolean))]
+      let porId = {}
+      if (autores.length) {
+        const { data: perfiles } = await supabase
+          .from('profile').select('id, nombre, apellido').in('id', autores)
+        porId = Object.fromEntries((perfiles || []).map(p => [p.id, p]))
+      }
+
       const firmados = await Promise.all(arch.map(async a => {
         const { data } = await supabase.storage.from('taller').createSignedUrl(a.path, 3600)
-        return { ...a, url: data?.signedUrl || null }
+        return { ...a, url: data?.signedUrl || null,
+                 autor: porId[a.autor_id] || null,
+                 anuladoPor: porId[a.anulado_por] || null }
       }))
       setArchivos(firmados)
     } else {
@@ -138,6 +158,50 @@ export default function Ficha() {
     setAccion(false)
   }
 
+  /**
+   * Papeles que llegan después de la entrega: orden firmada, recibo, factura.
+   *
+   * Van al mismo bucket y con el mismo formato de ruta, porque la policy
+   * reconoce el tipo por el nombre del archivo. Solo escribe en
+   * vehiculo_archivo: no toca el vehículo, así que no lo reactiva ni le
+   * devuelve los importes al tablero.
+   */
+  async function adjuntar(tipo, file) {
+    if (!file) return
+    setSubiendo(tipo)
+    setError(null)
+    const ext  = file.name.split('.').pop()
+    const path = `${v.empresa_id}/${id}/${tipo}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`
+
+    const { error: upErr } = await supabase.storage.from('taller').upload(path, file)
+    if (upErr) {
+      setError('No se pudo subir el archivo: ' + upErr.message)
+      setSubiendo(null)
+      return
+    }
+    // El autor y la fecha los pone la base.
+    const { error: insErr } = await supabase.from('vehiculo_archivo')
+      .insert({ vehiculo_id: id, tipo, path, nombre: file.name })
+    if (insErr) setError(insErr.message)
+
+    await cargar()
+    setSubiendo(null)
+  }
+
+  /**
+   * Anular no es borrar: el archivo queda en el bucket, la fila queda en la
+   * tabla y el movimiento queda en la bitácora. Solo deja de contar como
+   * documento válido de la ficha, con el motivo y el responsable escritos.
+   */
+  async function anular(archivo) {
+    const motivo = window.prompt(
+      `¿Por qué se anula "${archivo.nombre || TIPO_ARCHIVO[archivo.tipo]}"?\n\n` +
+      'El archivo no se borra: queda guardado con el motivo y tu nombre.')
+    if (motivo === null) return
+    if (!motivo.trim()) return setError('Hace falta decir por qué se anula')
+    await llamar('taller_anular_archivo', { p_archivo: archivo.id, p_motivo: motivo.trim() })
+  }
+
   if (cargando) return <main className="t-page"><p className="t-eyebrow">CARGANDO FICHA…</p></main>
   if (!v)       return <main className="t-page"><p className="t-eyebrow">NO SE ENCONTRÓ EL VEHÍCULO</p></main>
 
@@ -146,7 +210,8 @@ export default function Ficha() {
   const entregado = v.etapa === 'entregado'
   const terminado = v.etapa === 'terminado'
   const fotos     = archivos.filter(x => x.tipo.startsWith('foto'))
-  const pdfs      = archivos.filter(x => x.tipo.startsWith('orden'))
+  // Todo lo que no es foto se lista como documento: órdenes, recibos, facturas.
+  const pdfs      = archivos.filter(x => !x.tipo.startsWith('foto'))
 
   return (
     <main className="t-page">
@@ -211,14 +276,16 @@ export default function Ficha() {
                     className={`t-btn fantasma${v.excepcion === x.id ? ' urgente' : ''}`}
                     style={{ flex: 1, fontSize: 13, padding: '9px 6px',
                              color: v.excepcion === x.id ? '#f2efe9' : undefined }}
-                    disabled={accion || entregado || (!puedeValidar && !puedeTrabajar)}
+                    disabled={accion || entregado || !puedeValidar}
                     onClick={() => toggleExcepcion(x.id)}>
               {x.label}
             </button>
           ))}
         </div>
         <p className="t-aviso" style={{ marginTop: 10 }}>
-          No sacan el vehículo de su etapa. Al levantarlos, retoma en {etapaLabel(v.etapa)}.
+          {puedeValidar
+            ? `No sacan el vehículo de su etapa. Al levantarlos, retoma en ${etapaLabel(v.etapa)}.`
+            : 'Frenar o liberar un vehículo lo decide quien coordina. Si hay algo que lo traba, dejalo anotado en el reporte diario.'}
         </p>
       </Panel>
       )}
@@ -324,7 +391,7 @@ export default function Ficha() {
         </dl>
       </Panel>
 
-      {(fotos.length > 0 || pdfs.length > 0) && (
+      {(fotos.length > 0 || pdfs.length > 0 || entregado) && (
         <Panel legend="RESPALDO">
           {fotos.length > 0 && (
             <div className="t-fotos" style={{ marginBottom: pdfs.length ? 14 : 0 }}>
@@ -335,11 +402,59 @@ export default function Ficha() {
               ))}
             </div>
           )}
+
           {pdfs.map(x => (
-            <a key={x.id} className="t-doc" href={x.url} target="_blank" rel="noreferrer">
-              {x.tipo === 'orden_interna' ? 'Orden de trabajo interna' : 'Orden de la compañía'}
-            </a>
+            <div key={x.id} className={`t-doc${x.anulado_en ? ' anulado' : ''}`}>
+              <a href={x.url} target="_blank" rel="noreferrer" style={{ flex: 1, color: 'inherit' }}>
+                <span style={{ display: 'block' }}>{TIPO_ARCHIVO[x.tipo] || x.tipo}</span>
+                <span className="t-doc-m">
+                  {x.autor ? `${x.autor.nombre}${x.autor.apellido ? ' ' + x.autor.apellido : ''} · ` : ''}
+                  {new Date(x.created_at).toLocaleDateString('es-AR',
+                    { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                </span>
+                {x.anulado_en && (
+                  <span className="t-doc-anulado">
+                    ANULADO · {x.anulado_motivo}
+                    {x.anuladoPor ? ` · ${x.anuladoPor.nombre}` : ''}
+                    {' · '}
+                    {new Date(x.anulado_en).toLocaleDateString('es-AR',
+                      { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                  </span>
+                )}
+              </a>
+              {puedeAnular && !x.anulado_en && (
+                <button className="t-anular" onClick={() => anular(x)} disabled={accion}>
+                  Anular
+                </button>
+              )}
+            </div>
           ))}
+
+          {/* Los papeles que llegan después de entregar. Agregar uno no
+              reactiva el vehículo: sigue entregado y fuera de los totales. */}
+          {entregado && puedeCargar && (
+            <>
+              <p className="t-aviso" style={{ marginTop: 14 }}>
+                Sumar un documento no reactiva el vehículo ni devuelve sus importes al tablero.
+              </p>
+              <div className="t-grid" style={{ marginTop: 10 }}>
+                {DOCUMENTOS_ENTREGA
+                  .filter(d => !d.economico || verMontos)
+                  .map(d => (
+                    <label key={d.id} className="t-drop" style={{ margin: 0 }}>
+                      {subiendo === d.id ? 'Subiendo…' : `Agregar ${d.label.toLowerCase()}`}
+                      <input type="file" hidden
+                             accept={d.id === 'foto_entrega' ? 'image/*' : 'application/pdf,image/*'}
+                             disabled={subiendo !== null}
+                             onChange={ev => {
+                               adjuntar(d.id, ev.target.files?.[0])
+                               ev.target.value = ''
+                             }} />
+                    </label>
+                  ))}
+              </div>
+            </>
+          )}
         </Panel>
       )}
 

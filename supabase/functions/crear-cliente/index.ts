@@ -113,36 +113,8 @@ serve(async (req) => {
       }).eq('id', consulta_id)
     }
 
-    // ── 6. Crear tareas de documentación para la contadora ─────
-    const tareas = [
-      {
-        titulo:      `Documentación — ${nombre_empresa}`,
-        descripcion: 'CUIT, DNI del titular, constancia de inscripción AFIP',
-        tipo:        'documentacion',
-      },
-      {
-        titulo:      `Situación fiscal — ${nombre_empresa}`,
-        descripcion: 'Condición frente al IVA: Monotributo (categoría) o Responsable Inscripto',
-        tipo:        'fiscal',
-      },
-      {
-        titulo:      `Datos bancarios — ${nombre_empresa}`,
-        descripcion: 'CBU o alias del negocio para vinculación de cobros y pagos',
-        tipo:        'fiscal',
-      },
-      {
-        titulo:      `Contrato SAU — ${nombre_empresa}`,
-        descripcion: 'Firma del contrato de servicio y términos con SAU',
-        tipo:        'contrato',
-      },
-    ]
-    const { error: tareasErr } = await db
-      .from('tarea_contadora')
-      .insert(tareas.map(t => ({ ...t, empresa_id: empresa.id })))
-    if (tareasErr) {
-      // No frena la creación del cliente, solo loguea
-      console.warn('No se pudieron crear tareas contadora:', tareasErr.message)
-    }
+    // El alta ya no genera tareas para una contadora de SAU: ese servicio se
+    // descartó. Las 12 tareas que quedaron de antes no se tocan.
 
     return new Response(JSON.stringify({
       ok:         true,

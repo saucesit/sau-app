@@ -48,7 +48,21 @@ export const TODOS_PERMISOS = [
   'reportes.ver',
   'empresa.admin','empresa.rrhh',
   'taller.ver','taller.cargar','taller.trabajar','taller.validar','taller.montos',
+  // Eliminar vehículos va aparte de empresa.admin: hay un perfil que ve y
+  // opera todo pero no borra nada. Lo hace cumplir la policy vehiculo_delete.
+  'taller.eliminar', 'taller.anular',
 ]
+
+/**
+ * Permisos que solo asigna SAU. Ningún cliente puede otorgarlos ni quitárselos,
+ * y la lista está repetida en la base (sau_permisos_reservados) y en las edge
+ * functions: esto es nada más para no ofrecer en pantalla lo que el servidor
+ * va a rechazar.
+ *
+ * taller.eliminar está acá porque borrar un vehículo se lleva su historial
+ * completo: montos, bitácora y registros de adjuntos.
+ */
+export const PERMISOS_RESERVADOS_SAU = ['empresa.admin', 'empresa.rrhh', 'taller.eliminar', 'taller.anular']
 
 // Permisos base para empleado que se une por invitación
 export const PERMISOS_EMPLEADO_BASE = [

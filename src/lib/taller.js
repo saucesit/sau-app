@@ -32,6 +32,34 @@ export const ETAPAS_CON_OPERARIO = ETAPAS.filter(e =>
   ['chapa', 'preparacion', 'pintura', 'pre_entrega'].includes(e.id)
 )
 
+/**
+ * Documentos que se pueden sumar a la ficha después de entregar el auto.
+ *
+ * Agregar uno no reactiva nada: son filas de vehiculo_archivo y no tocan al
+ * vehículo, así que sigue entregado y sus importes siguen fuera del tablero.
+ *
+ * `economico` marca los que muestran plata. Esos no los ve quien no tiene
+ * taller.montos, y eso lo hace cumplir la base, no esta lista.
+ */
+export const DOCUMENTOS_ENTREGA = [
+  { id: 'orden_firmada', label: 'Orden firmada por el cliente', economico: true  },
+  { id: 'recibo',        label: 'Recibo',                       economico: true  },
+  { id: 'factura',       label: 'Factura',                      economico: true  },
+  { id: 'foto_entrega',  label: 'Foto de la entrega',           economico: false },
+]
+
+/** Cómo se lee cada tipo de adjunto en la ficha. */
+export const TIPO_ARCHIVO = {
+  foto_ingreso:   'Foto de ingreso',
+  foto_proceso:   'Foto del proceso',
+  foto_entrega:   'Foto de la entrega',
+  orden_interna:  'Orden de trabajo interna',
+  orden_compania: 'Orden de la compañía',
+  orden_firmada:  'Orden firmada por el cliente',
+  recibo:         'Recibo',
+  factura:        'Factura',
+}
+
 export const EXCEPCIONES = [
   { id: 'mecanica',   label: 'Mecánica',   color: 'text-sky-400 bg-sky-500/15'     },
   { id: 'detenido',   label: 'Detenido',   color: 'text-red-400 bg-red-500/15'     },

@@ -243,7 +243,8 @@ if (invitadoFinal) {
 }
 const quedan = await rest(adminA, `membresia?empresa_id=eq.${EMPRESA_A}&select=id`)
 const invs   = await rest(adminA, `invitacion?empresa_id=eq.${EMPRESA_A}&select=id`)
-check('la empresa de prueba queda con su equipo original', quedan.body?.length === 7,
+// 8 desde 0035: se sumó taller-a-administrador para probar el perfil nuevo.
+check('la empresa de prueba queda con su equipo original', quedan.body?.length === 8,
       `quedaron ${quedan.body?.length}`)
 check('y sin invitaciones sueltas', invs.body?.length === 0, `quedaron ${invs.body?.length}`)
 

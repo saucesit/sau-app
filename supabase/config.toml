@@ -411,3 +411,8 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 # declarative_schema_path = "./database"
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
+
+# Quien acepta una invitación todavía no tiene cuenta, así que esta función
+# tiene que ser pública. Queda acá para que no se pierda en el próximo deploy.
+[functions.aceptar-invitacion]
+verify_jwt = false
