@@ -71,10 +71,10 @@ export default function Ficha() {
       supabase.from('vehiculo').select('*').eq('id', id).single(),
       supabase.from('vehiculo_monto').select('*').eq('vehiculo_id', id).maybeSingle(),
       supabase.from('vehiculo_evento').select('*').eq('vehiculo_id', id).order('created_at', { ascending: false }),
-      // El autor se lee por la policy profile_empresa: son compañeros de empresa.
-      supabase.from('vehiculo_archivo')
-        .select('*, autor:autor_id(nombre, apellido)')
-        .eq('vehiculo_id', id).order('created_at'),
+      // El autor NO se puede traer con un join embebido: autor_id apunta a
+      // auth.users, no a profile, y PostgREST no encuentra la relación. Se
+      // busca aparte, más abajo.
+      supabase.from('vehiculo_archivo').select('*').eq('vehiculo_id', id).order('created_at'),
     ])
     // Sin permiso taller.montos la consulta vuelve vacía y la ficha no muestra precios.
     setV(veh ? { ...veh, ...(monto || {}) } : null)
@@ -83,9 +83,20 @@ export default function Ficha() {
     setFacturas(Object.fromEntries(RUBROS.map(r => [r.id, monto?.[r.factura] || ''])))
 
     if (arch?.length) {
+      // Quién subió cada papel. La policy profile_empresa deja leer el perfil
+      // de los compañeros de empresa; si alguno no se encuentra, se muestra
+      // igual el documento sin el nombre.
+      const autores = [...new Set(arch.map(a => a.autor_id).filter(Boolean))]
+      let porId = {}
+      if (autores.length) {
+        const { data: perfiles } = await supabase
+          .from('profile').select('id, nombre, apellido').in('id', autores)
+        porId = Object.fromEntries((perfiles || []).map(p => [p.id, p]))
+      }
+
       const firmados = await Promise.all(arch.map(async a => {
         const { data } = await supabase.storage.from('taller').createSignedUrl(a.path, 3600)
-        return { ...a, url: data?.signedUrl || null }
+        return { ...a, url: data?.signedUrl || null, autor: porId[a.autor_id] || null }
       }))
       setArchivos(firmados)
     } else {
