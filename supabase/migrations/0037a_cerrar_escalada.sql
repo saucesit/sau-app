@@ -16,10 +16,23 @@
 -- Aplicar esto NO le saca nada a nadie: hoy el único perfil con es_sau_admin
 -- es el de Facundo, y lo conserva.
 
-revoke update (es_sau_admin, es_sau_contadora) on profile from authenticated;
-revoke insert (es_sau_admin, es_sau_contadora) on profile from authenticated;
-revoke update (es_sau_admin, es_sau_contadora) on profile from anon;
-revoke insert (es_sau_admin, es_sau_contadora) on profile from anon;
+-- Primera barrera: los permisos de columna.
+--
+-- OJO con esto, que me lo comí en el primer intento: `authenticated` tiene el
+-- permiso a NIVEL TABLA, y un revoke por columna sobre un permiso de tabla no
+-- hace nada. Hay que sacar el de tabla y devolver solo las columnas inocuas.
+--
+-- Se puede hacer sin romper nada porque ningún punto de la aplicación escribe
+-- `profile` desde el navegador: solo lee. Las altas y los cambios de nombre los
+-- hacen las edge functions con service_role, que no pasa por estos permisos.
+-- Las tres columnas se devuelven igual, para que editar el propio perfil siga
+-- siendo posible el día que haya una pantalla que lo haga.
+
+revoke update, insert on profile from authenticated;
+revoke update, insert on profile from anon;
+
+grant update (nombre, apellido, telefono) on profile to authenticated;
+grant insert (id, nombre, apellido, telefono) on profile to authenticated;
 
 -- Segunda barrera, independiente de los permisos de columna. Incluye a
 -- service_role a propósito: las edge functions administran equipos de empresa y
