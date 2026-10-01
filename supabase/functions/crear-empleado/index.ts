@@ -66,7 +66,10 @@ Deno.serve(async (req) => {
     await admin.from('membresia').insert({
       usuario_id: uid,
       empresa_id,
-      rol: rol || 'empleado',
+      // Lista blanca: administrar el equipo de UNA empresa no puede servir
+      // para fabricar roles que antes abrían todas. 'admin' y 'contadora' son
+      // de SAU y no se asignan desde acá.
+      rol: ['empleado', 'dueno'].includes(rol) ? rol : 'empleado',
       permisos: permisos || ['ventas.crear', 'ventas.ver', 'caja.ver', 'reportes.ver'],
     })
 
