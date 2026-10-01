@@ -259,14 +259,16 @@ export default function Ficha() {
                     className={`t-btn fantasma${v.excepcion === x.id ? ' urgente' : ''}`}
                     style={{ flex: 1, fontSize: 13, padding: '9px 6px',
                              color: v.excepcion === x.id ? '#f2efe9' : undefined }}
-                    disabled={accion || entregado || (!puedeValidar && !puedeTrabajar)}
+                    disabled={accion || entregado || !puedeValidar}
                     onClick={() => toggleExcepcion(x.id)}>
               {x.label}
             </button>
           ))}
         </div>
         <p className="t-aviso" style={{ marginTop: 10 }}>
-          No sacan el vehículo de su etapa. Al levantarlos, retoma en {etapaLabel(v.etapa)}.
+          {puedeValidar
+            ? `No sacan el vehículo de su etapa. Al levantarlos, retoma en ${etapaLabel(v.etapa)}.`
+            : 'Frenar o liberar un vehículo lo decide quien coordina. Si hay algo que lo traba, dejalo anotado en el reporte diario.'}
         </p>
       </Panel>
       )}

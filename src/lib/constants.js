@@ -48,6 +48,9 @@ export const TODOS_PERMISOS = [
   'reportes.ver',
   'empresa.admin','empresa.rrhh',
   'taller.ver','taller.cargar','taller.trabajar','taller.validar','taller.montos',
+  // Eliminar vehículos va aparte de empresa.admin: hay un perfil que ve y
+  // opera todo pero no borra nada. Lo hace cumplir la policy vehiculo_delete.
+  'taller.eliminar',
 ]
 
 // Permisos base para empleado que se une por invitación
