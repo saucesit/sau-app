@@ -98,8 +98,11 @@ export const TAREAS = [
     id: 'equipo',
     icon: '👥',
     titulo: 'Gestiona el equipo',
-    descripcion: 'Agrega empleados, modifica accesos y configura el negocio',
-    permisos: ['empresa.admin', 'empresa.rrhh'],
+    descripcion: 'Agrega gente, cambia qué puede hacer cada uno y configura el negocio',
+    // Solo empresa.admin: alcanza para ADMIN, para invitar y para crear
+    // empleados. empresa.rrhh era un segundo camino a lo mismo y sumarlo dejaba
+    // un permiso de más sin ninguna función propia.
+    permisos: ['empresa.admin'],
     colorActivo: 'bg-slate-600',
     colorFondo:  'bg-slate-50 border-slate-200',
     colorTexto:  'text-slate-700',
