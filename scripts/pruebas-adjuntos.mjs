@@ -62,6 +62,8 @@ async function rest(u, path, opts = {}) {
   return { status: r.status, ok: r.ok, body }
 }
 
+const rpc = (u, fn, args) => rest(u, `rpc/${fn}`, { method: 'POST', body: JSON.stringify(args) })
+
 async function subir(u, path, contenido, tipoMime) {
   const r = await fetch(`${SUPA}/storage/v1/object/taller/${path}`, {
     method: 'POST',
@@ -170,6 +172,67 @@ console.log('\n4. EL OPERARIO NO VE DOCUMENTOS CON IMPORTES')
     method: 'POST', body: JSON.stringify({ vehiculo_id: V.id, tipo: 'factura', path: 'x/y/factura-1.pdf' }),
   })
   check('ni registrarla en la ficha', !ins.ok, `status ${ins.status}`)
+}
+
+// ── 5. El operario no adjunta nada en un entregado ────────────────
+// Ni siquiera una foto: la restricción es del servidor, no de la pantalla.
+console.log('\n5. EL OPERARIO NO ADJUNTA EN ENTREGADOS')
+{
+  const rutaF = `${V.empresa_id}/${V.id}/foto_entrega-${marca}-oper.png`
+  const s = await subir(operario, rutaF, 'x', 'image/png')
+  check('no puede subir una foto al bucket', !s.ok, `status ${s.status}`)
+
+  const i = await rest(operario, 'vehiculo_archivo', {
+    method: 'POST', body: JSON.stringify({ vehiculo_id: V.id, tipo: 'foto_entrega', path: rutaF }),
+  })
+  check('ni registrarla en la ficha', !i.ok, `status ${i.status}`)
+}
+
+// ── 6. Anular un adjunto cargado por error ────────────────────────
+console.log('\n6. ANULAR, SIN BORRAR NADA')
+{
+  const { body: ar } = await rest(duena,
+    `vehiculo_archivo?vehiculo_id=eq.${V.id}&tipo=eq.recibo&anulado_en=is.null&select=id,path&limit=1`)
+  if (!ar?.length) { console.log('  (sin recibo para anular)') }
+  else {
+    const A = ar[0]
+
+    const sinMotivo = await rpc(duena, 'taller_anular_archivo', { p_archivo: A.id, p_motivo: '  ' })
+    check('exige un motivo', !sinMotivo.ok, JSON.stringify(sinMotivo.body))
+
+    const porOperario = await rpc(operario, 'taller_anular_archivo',
+      { p_archivo: A.id, p_motivo: 'quiero borrarlo' })
+    check('el operario no puede anular', !porOperario.ok)
+
+    const r = await rpc(duena, 'taller_anular_archivo',
+      { p_archivo: A.id, p_motivo: 'Cargado en el vehículo equivocado' })
+    check('quien puede eliminar sí anula', r.ok, JSON.stringify(r.body))
+
+    const { body: d } = await rest(duena, `vehiculo_archivo?id=eq.${A.id}&select=*`)
+    check('la fila NO se borra', d?.length === 1)
+    check('queda el motivo', d?.[0]?.anulado_motivo === 'Cargado en el vehículo equivocado')
+    check('queda quién lo anuló', !!d?.[0]?.anulado_por)
+    check('y cuándo', !!d?.[0]?.anulado_en)
+
+    const f = await firmar(duena, A.path)
+    check('el archivo sigue en el bucket', f.ok, `status ${f.status}`)
+
+    const { body: ev } = await rest(duena,
+      `vehiculo_evento?vehiculo_id=eq.${V.id}&tipo=eq.anulacion&select=texto&order=created_at.desc&limit=1`)
+    check('queda en la bitácora con el motivo',
+          /vehículo equivocado/i.test(ev?.[0]?.texto || ''), ev?.[0]?.texto)
+
+    const otra = await rpc(duena, 'taller_anular_archivo', { p_archivo: A.id, p_motivo: 'de nuevo' })
+    check('no se puede anular dos veces', !otra.ok)
+
+    const directo = await rest(duena, `vehiculo_archivo?id=eq.${A.id}`, {
+      method: 'PATCH', headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({ anulado_motivo: 'cambiado a mano' }),
+    })
+    check('no se puede tocar la anulación por API directa',
+          !directo.ok || (Array.isArray(directo.body) && directo.body.length === 0),
+          `status ${directo.status}`)
+  }
 }
 
 console.log(`\n${'='.repeat(52)}`)

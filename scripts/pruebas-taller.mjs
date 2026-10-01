@@ -109,6 +109,14 @@ for (const [k, mail] of Object.entries({
 
 const { body: vs } = await rest(users.admin, `vehiculo?patente=eq.ZZTEST01&select=id,etapa`)
 const VEH = vs[0].id
+// Esta suite recorre la cadena completa y deja el vehículo entregado, así que
+// necesita el seed antes de cada corrida. Sin este aviso fallan doce pruebas
+// sin que se entienda por qué.
+if (vs[0].etapa === 'entregado') {
+  console.error('\nZZTEST01 quedó entregado de una corrida anterior.')
+  console.error('Corré primero:  supabase db query --linked -f scripts/seed-pruebas-taller.sql\n')
+  process.exit(1)
+}
 console.log(`\nVehículo de prueba: ${VEH} (etapa ${vs[0].etapa})\n`)
 
 // ── 1. Aislamiento entre empresas ────────────────────────────────

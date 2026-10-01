@@ -181,9 +181,13 @@ console.log('\n5. EDITAR DATOS DEL VEHÍCULO')
         !o.ok || (Array.isArray(o.body) && o.body.length === 0), `status ${o.status}`)
 
   const nuevo = '387 777-' + String(Date.now()).slice(-4)
+  // Paños tiene que terminar en un valor distinto del actual, si no el trigger
+  // no registra nada y la prueba se cae sola en la segunda corrida.
+  const { body: antesV } = await rest(admin, `vehiculo?id=eq.${V.id}&select=panos`)
+  const panosNuevo = (Number(antesV?.[0]?.panos) || 0) + 1
   const a = await rest(admin, `vehiculo?id=eq.${V.id}`, {
     method: 'PATCH', headers: { Prefer: 'return=representation' },
-    body: JSON.stringify({ telefono: nuevo, panos: 9 }),
+    body: JSON.stringify({ telefono: nuevo, panos: panosNuevo }),
   })
   check('el administrador sí', a.ok && a.body?.length === 1, `status ${a.status}`)
 
@@ -244,6 +248,59 @@ console.log('\n8. NINGUNO SALE DE SU EMPRESA')
 
   const { body: ajenos } = await rest(admin, `vehiculo?empresa_id=neq.${EMPRESA_A}&select=id`)
   check('el administrador no ve vehículos de otras', ajenos?.length === 0)
+}
+
+// ── 9. Qué se lleva puesto eliminar un vehículo ───────────────────
+// Esto no es una restricción: es documentar el comportamiento real, que es
+// más destructivo de lo que parece desde la pantalla.
+console.log('\n9. QUÉ PASA AL ELIMINAR UN VEHÍCULO')
+{
+  const marca = Date.now()
+  const alta = await rest(completo, 'vehiculo', {
+    method: 'POST', headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({
+      empresa_id: EMPRESA_A, patente: 'ZZCASC' + String(marca).slice(-2),
+      vehiculo: 'PARA PROBAR LA CASCADA', cliente_nombre: 'X', compania: 'Particular',
+      fecha_ingreso: new Date().toISOString().slice(0, 10),
+    }),
+  })
+  const ID = alta.body?.[0]?.id
+
+  await rest(completo, 'vehiculo_evento', {
+    method: 'POST', body: JSON.stringify({ vehiculo_id: ID, tipo: 'nota', texto: 'Nota de prueba.' }),
+  })
+  const ruta = `${EMPRESA_A}/${ID}/foto_ingreso-${marca}-casc.png`
+  await subir(completo, ruta, 'x', 'image/png')
+  await rest(completo, 'vehiculo_archivo', {
+    method: 'POST', body: JSON.stringify({ vehiculo_id: ID, tipo: 'foto_ingreso', path: ruta, nombre: 'f.png' }),
+  })
+
+  const antes = {
+    montos:   (await rest(completo, `vehiculo_monto?vehiculo_id=eq.${ID}&select=vehiculo_id`)).body?.length,
+    eventos:  (await rest(completo, `vehiculo_evento?vehiculo_id=eq.${ID}&select=id`)).body?.length,
+    archivos: (await rest(completo, `vehiculo_archivo?vehiculo_id=eq.${ID}&select=id`)).body?.length,
+    enBucket: (await firmar(completo, ruta)).ok,
+  }
+  check('antes de borrar hay monto, bitácora, adjunto y archivo en el bucket',
+        antes.montos === 1 && antes.eventos >= 1 && antes.archivos === 1 && antes.enBucket,
+        JSON.stringify(antes))
+
+  await rest(completo, `vehiculo?id=eq.${ID}`, { method: 'DELETE' })
+
+  const despues = {
+    vehiculo: (await rest(completo, `vehiculo?id=eq.${ID}&select=id`)).body?.length,
+    montos:   (await rest(completo, `vehiculo_monto?vehiculo_id=eq.${ID}&select=vehiculo_id`)).body?.length,
+    eventos:  (await rest(completo, `vehiculo_evento?vehiculo_id=eq.${ID}&select=id`)).body?.length,
+    archivos: (await rest(completo, `vehiculo_archivo?vehiculo_id=eq.${ID}&select=id`)).body?.length,
+    enBucket: (await firmar(completo, ruta)).ok,
+  }
+  check('se borra el vehículo', despues.vehiculo === 0)
+  check('la cascada se lleva los montos', despues.montos === 0, String(despues.montos))
+  check('la cascada se lleva la bitácora entera', despues.eventos === 0, String(despues.eventos))
+  check('la cascada se lleva los registros de adjuntos', despues.archivos === 0, String(despues.archivos))
+  // Y este es el punto importante: el archivo en sí NO se borra.
+  check('pero el archivo queda huérfano en el bucket', despues.enBucket === true,
+        `enBucket=${despues.enBucket}`)
 }
 
 console.log(`\n${'='.repeat(52)}`)

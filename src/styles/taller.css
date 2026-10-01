@@ -436,3 +436,16 @@
   .t-rail-label { font-size: 9px; letter-spacing: 0.04em; }
   .t-fotos { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* Un adjunto anulado no se borra: se muestra tachado, con su motivo. */
+.t-doc.anulado { opacity: 0.6; }
+.t-doc.anulado > a > span:first-child { text-decoration: line-through; }
+.t-doc-anulado {
+  display: block; margin-top: 3px; font-family: var(--t-mono); font-size: 9.5px;
+  letter-spacing: 0.06em; color: var(--t-urgent);
+}
+.t-anular {
+  font-family: var(--t-mono); font-size: 10px; letter-spacing: 0.06em;
+  color: var(--t-ink-3); border: 1px solid var(--t-rule); padding: 4px 8px; flex: none;
+}
+.t-anular:hover:not(:disabled) { color: var(--t-urgent); border-color: var(--t-urgent); }

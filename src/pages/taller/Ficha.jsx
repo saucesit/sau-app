@@ -59,6 +59,7 @@ export default function Ficha() {
   const puedeValidar  = tienePermiso('taller.validar')
   const puedeTrabajar = tienePermiso('taller.trabajar')
   const puedeCargar   = tienePermiso('taller.cargar')
+  const puedeAnular   = tienePermiso('taller.eliminar')
   // El permiso solo no alcanza: hay que tener cargadas las etapas del oficio.
   // Quien no las tiene veía el botón y recién al tocarlo le saltaba el error.
   const sinEtapas     = puedeTrabajar && tallerEtapas.length === 0
@@ -86,7 +87,7 @@ export default function Ficha() {
       // Quién subió cada papel. La policy profile_empresa deja leer el perfil
       // de los compañeros de empresa; si alguno no se encuentra, se muestra
       // igual el documento sin el nombre.
-      const autores = [...new Set(arch.map(a => a.autor_id).filter(Boolean))]
+      const autores = [...new Set(arch.flatMap(a => [a.autor_id, a.anulado_por]).filter(Boolean))]
       let porId = {}
       if (autores.length) {
         const { data: perfiles } = await supabase
@@ -96,7 +97,9 @@ export default function Ficha() {
 
       const firmados = await Promise.all(arch.map(async a => {
         const { data } = await supabase.storage.from('taller').createSignedUrl(a.path, 3600)
-        return { ...a, url: data?.signedUrl || null, autor: porId[a.autor_id] || null }
+        return { ...a, url: data?.signedUrl || null,
+                 autor: porId[a.autor_id] || null,
+                 anuladoPor: porId[a.anulado_por] || null }
       }))
       setArchivos(firmados)
     } else {
@@ -183,6 +186,20 @@ export default function Ficha() {
 
     await cargar()
     setSubiendo(null)
+  }
+
+  /**
+   * Anular no es borrar: el archivo queda en el bucket, la fila queda en la
+   * tabla y el movimiento queda en la bitácora. Solo deja de contar como
+   * documento válido de la ficha, con el motivo y el responsable escritos.
+   */
+  async function anular(archivo) {
+    const motivo = window.prompt(
+      `¿Por qué se anula "${archivo.nombre || TIPO_ARCHIVO[archivo.tipo]}"?\n\n` +
+      'El archivo no se borra: queda guardado con el motivo y tu nombre.')
+    if (motivo === null) return
+    if (!motivo.trim()) return setError('Hace falta decir por qué se anula')
+    await llamar('taller_anular_archivo', { p_archivo: archivo.id, p_motivo: motivo.trim() })
   }
 
   if (cargando) return <main className="t-page"><p className="t-eyebrow">CARGANDO FICHA…</p></main>
@@ -387,16 +404,30 @@ export default function Ficha() {
           )}
 
           {pdfs.map(x => (
-            <a key={x.id} className="t-doc" href={x.url} target="_blank" rel="noreferrer">
-              <span>
+            <div key={x.id} className={`t-doc${x.anulado_en ? ' anulado' : ''}`}>
+              <a href={x.url} target="_blank" rel="noreferrer" style={{ flex: 1, color: 'inherit' }}>
                 <span style={{ display: 'block' }}>{TIPO_ARCHIVO[x.tipo] || x.tipo}</span>
                 <span className="t-doc-m">
                   {x.autor ? `${x.autor.nombre}${x.autor.apellido ? ' ' + x.autor.apellido : ''} · ` : ''}
                   {new Date(x.created_at).toLocaleDateString('es-AR',
                     { day: '2-digit', month: '2-digit', year: '2-digit' })}
                 </span>
-              </span>
-            </a>
+                {x.anulado_en && (
+                  <span className="t-doc-anulado">
+                    ANULADO · {x.anulado_motivo}
+                    {x.anuladoPor ? ` · ${x.anuladoPor.nombre}` : ''}
+                    {' · '}
+                    {new Date(x.anulado_en).toLocaleDateString('es-AR',
+                      { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                  </span>
+                )}
+              </a>
+              {puedeAnular && !x.anulado_en && (
+                <button className="t-anular" onClick={() => anular(x)} disabled={accion}>
+                  Anular
+                </button>
+              )}
+            </div>
           ))}
 
           {/* Los papeles que llegan después de entregar. Agregar uno no
