@@ -208,7 +208,8 @@ export default function Ficha() {
   const e         = estado(v)
   const a         = proximaAccion(v)
   const entregado = v.etapa === 'entregado'
-  const terminado = v.etapa === 'terminado'
+  // La última etapa antes de entregar. Desde 0040 es Control de Calidad.
+  const terminado = v.etapa === 'control_calidad'
   const fotos     = archivos.filter(x => x.tipo.startsWith('foto'))
   // Todo lo que no es foto se lista como documento: órdenes, recibos, facturas.
   const pdfs      = archivos.filter(x => !x.tipo.startsWith('foto'))

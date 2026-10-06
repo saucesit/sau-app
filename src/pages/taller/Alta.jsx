@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
-import { COMPANIAS } from '../../lib/taller'
+import { COMPANIAS, patenteLegible, etapaLabel, fmtFecha } from '../../lib/taller'
 
 function Campo({ label, obligatorio, ancho, children }) {
   return (
@@ -28,6 +28,11 @@ export default function Alta() {
     fecha_ingreso: hoy, fecha_pactada: '',
     monto_compania: '', monto_franquicia: '', monto_particular: '',
   })
+  // Órdenes activas que ya existen con esa patente. La base rechaza la segunda
+  // salvo que se confirme, así que conviene avisar antes y no después del error.
+  const [yaAbiertas,  setYaAbiertas]  = useState([])
+  const [esOtraOrden, setEsOtraOrden] = useState(false)
+
   const [fotos,         setFotos]         = useState([])
   const [ordenInterna,  setOrdenInterna]  = useState(null)
   const [ordenCompania, setOrdenCompania] = useState(null)
@@ -35,6 +40,22 @@ export default function Alta() {
   const [error,     setError]     = useState(null)
 
   const set = (k) => (e) => setF(prev => ({ ...prev, [k]: e.target.value }))
+
+  /**
+   * El mismo auto puede tener dos órdenes abiertas —pasa de verdad en el
+   * taller— pero cargarlo dos veces por distracción también. Al salir del campo
+   * de la patente se pregunta si ya hay alguna abierta, y si la hay se muestra
+   * cuál, para que quien carga decida con el dato a la vista.
+   */
+  async function revisarPatente() {
+    const limpia = f.patente.replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+    if (!limpia || !empresaActivaId) return setYaAbiertas([])
+    const { data } = await supabase.rpc('taller_ordenes_activas', {
+      p_empresa: empresaActivaId, p_patente: limpia,
+    })
+    setYaAbiertas(data || [])
+    if (!data?.length) setEsOtraOrden(false)
+  }
 
   /**
    * Desde el celular las fotos se sacan de a una o dos, no todas juntas: si
@@ -83,6 +104,9 @@ export default function Alta() {
 
   async function guardar() {
     if (faltantes.length) return setError(`Falta completar: ${faltantes.join(', ')}`)
+    if (yaAbiertas.length && !esOtraOrden) {
+      return setError('Este auto ya tiene una orden abierta. Confirmá que es otra orden distinta, o abrí la que ya existe.')
+    }
     setGuardando(true)
     setError(null)
 
@@ -103,6 +127,8 @@ export default function Alta() {
         nro_siniestro:  f.nro_siniestro.trim() || null,
         fecha_ingreso:  f.fecha_ingreso,
         fecha_pactada:  f.fecha_pactada,
+        // Sin esto la base rechaza la segunda orden activa de una misma patente.
+        orden_adicional: yaAbiertas.length > 0 && esOtraOrden,
       })
       .select('id')
       .single()
@@ -138,11 +164,50 @@ export default function Alta() {
       <div style={{ marginTop: 20 }}>
         {error && <p className="t-error">{error}</p>}
 
+        {/* El mismo auto puede tener dos órdenes abiertas, pero casi siempre que
+            pasa es una carga repetida. Se muestra la que ya existe para que la
+            decisión se tome con el dato adelante, no después del error. */}
+        {yaAbiertas.length > 0 && (
+          <section className="t-panel" style={{ borderColor: 'var(--t-warn)' }}>
+            <p className="t-legend" style={{ color: 'var(--t-warn)' }}>
+              ESTE AUTO YA ESTÁ EN EL TALLER
+            </p>
+            {yaAbiertas.map(o => (
+              <button key={o.id} className="t-doc" style={{ width: '100%', textAlign: 'left' }}
+                      onClick={() => navigate(`/taller/${o.id}`)}>
+                <span>
+                  <span style={{ display: 'block' }}>
+                    {patenteLegible(o.patente)} · {o.vehiculo} · {o.cliente_nombre}
+                  </span>
+                  <span className="t-doc-m">
+                    EN {etapaLabel(o.etapa).toUpperCase()} · INGRESÓ EL {fmtFecha(o.fecha_ingreso)}
+                    {' · '}TOCÁ PARA ABRIRLA
+                  </span>
+                </span>
+              </button>
+            ))}
+            <label className="t-opcion" style={{ marginTop: 12, cursor: 'pointer' }}>
+              <input type="checkbox" checked={esOtraOrden}
+                     onChange={e => setEsOtraOrden(e.target.checked)} />
+              <span>
+                <span className="t-opcion-t" style={{ display: 'block' }}>
+                  Es otra orden distinta, no la misma
+                </span>
+                <span className="t-opcion-d" style={{ display: 'block' }}>
+                  Marcalo solo si el auto entró de nuevo por otro trabajo. Si es el mismo,
+                  abrí la orden de arriba en vez de cargarla otra vez.
+                </span>
+              </span>
+            </label>
+          </section>
+        )}
+
         <section className="t-panel">
           <p className="t-legend">VEHÍCULO Y CLIENTE</p>
           <div className="t-grid">
             <Campo label="Patente" obligatorio>
-              <input className="t-input mono" value={f.patente} onChange={set('patente')} placeholder="AF350PM" />
+              <input className="t-input mono" value={f.patente} onChange={set('patente')}
+                     onBlur={revisarPatente} placeholder="AF350PM" />
             </Campo>
             <Campo label="Vehículo (marca y modelo)" obligatorio>
               <input className="t-input" value={f.vehiculo} onChange={set('vehiculo')} placeholder="Renault Alaskan" />

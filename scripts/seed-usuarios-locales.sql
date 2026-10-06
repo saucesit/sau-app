@@ -36,7 +36,7 @@ begin
       ('duena@local.test', 'Dueña', v_taller, 'dueno',
        array['taller.ver','taller.cargar','taller.trabajar','taller.validar','taller.montos',
              'equipo.ver','reportes.ver','empresa.admin'],
-       array['chapa','preparacion','pintura','pre_entrega']),
+       array['chapa','preparacion','pintura','terminacion']),
 
       ('encargado@local.test', 'Encargado', v_taller, 'empleado',
        array['taller.ver','taller.cargar','taller.validar','taller.montos'],
@@ -48,7 +48,7 @@ begin
 
       ('pintor@local.test', 'Pintor', v_taller, 'empleado',
        array['taller.ver','taller.trabajar'],
-       array['pintura','pre_entrega']),
+       array['pintura','terminacion']),
 
       ('recepcion@local.test', 'Recepción', v_taller, 'empleado',
        array['taller.ver','taller.cargar'],

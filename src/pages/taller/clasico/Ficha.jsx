@@ -142,7 +142,8 @@ export default function TallerVehiculo() {
   const als       = alertas(v)
   const exc       = excepcionCfg(v.excepcion)
   const siguiente = etapaSiguiente(v.etapa)
-  const enTerminado = v.etapa === 'terminado'
+  // La última etapa antes de entregar. Desde 0040 es Control de Calidad.
+  const enTerminado = v.etapa === 'control_calidad'
   const entregado   = v.etapa === 'entregado'
   const fotos = archivos.filter(a => a.tipo.startsWith('foto'))
   const pdfs  = archivos.filter(a => a.tipo.startsWith('orden'))

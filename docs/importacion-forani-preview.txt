@@ -1,0 +1,83 @@
+IMPORTACIÓN DEL EXCEL DE GRUPO FORANI — VISTA PREVIA
+Nada de esto está aplicado. Es lo que haría el .sql que se generó al lado.
+
+  A importar: 313   (28 adentro del taller, 285 entregados)
+  No se importan: 4
+  Avisos: 11
+
+ETAPAS CON LAS QUE ENTRAN
+   12  recepcion
+    2  chapa
+    5  preparacion
+    5  pintura
+    3  terminacion
+    1  control_calidad
+
+PLATA
+  Pendiente de facturar que va a mostrar el tablero (solo los activos):
+    compañía   $   25,574,311.00
+    franquicia $    8,087,660.00
+    particular $    8,551,334.30
+  Estados de facturación en total: {'pendiente': 139, 'no_aplica': 423, 'facturado': 377}
+  (el vacío del Excel entra como "no aplica" y por eso no suma)
+
+PATENTES REPETIDAS ENTRE LOS ACTIVOS — se importan igual, como órdenes distintas
+  Las segundas entran marcadas como "orden adicional", que es lo que la
+  guardia de duplicados pide para dejarlas pasar a propósito.
+  AA403JQ:
+      TALLER:31          ingreso 2026-09-29  etapa recepcion        $   1,817,001.00
+      TALLER:32          ingreso 2026-09-29  etapa recepcion        $     368,000.00  [orden adicional]
+  AC287SF:
+      TALLER:10          ingreso 2026-08-31  etapa pintura          $   2,265,834.30
+      TALLER:11          ingreso 2026-09-01  etapa pintura          $   2,721,375.00  [orden adicional]
+  AD331UC:
+      TALLER:20          ingreso 2026-09-21  etapa preparacion      $   1,178,000.00
+      TALLER:21          ingreso 2026-09-22  etapa preparacion      $     270,000.00  [orden adicional]
+  AD673ZD:
+      TALLER:29          ingreso 2026-09-29  etapa recepcion        $   1,351,000.00
+      TALLER:30          ingreso 2026-09-29  etapa recepcion        $     922,500.00  [orden adicional]
+
+PATENTES QUE APARECEN MÁS DE UNA VEZ EN EL HISTÓRICO: 36
+  Es normal: el mismo auto puede haber vuelto. Se importan todas.
+  Ejemplos: AA257XO, AA322KC, AA761NU, AB645IY, AB699UD, AC227YF, AC293BG, AC331IQ, AC628NC, AC628RA
+
+AVISOS
+  TALLER:12          AB436HI: "Detenido" es estado, no etapa
+                       -> queda en Recepción con la excepción puesta
+  TALLER:26          AH405GC: "Detenido" es estado, no etapa
+                       -> queda en Recepción con la excepción puesta
+  ENTREGADOS:13      GTM218: sin fecha de ingreso
+                       -> se usa la de egreso, que es el único dato que hay
+  ENTREGADOS:97      AA651IC: sin fecha de ingreso
+                       -> se usa la de egreso, que es el único dato que hay
+  ENTREGADOS:162     AC293BG: sin fecha de ingreso
+                       -> se usa la de egreso, que es el único dato que hay
+  ENTREGADOS:180     AF176LZ: sin fecha de ingreso
+                       -> se usa la de egreso, que es el único dato que hay
+  ENTREGADOS:182     AB091WS: sin fecha de ingreso
+                       -> se usa la de egreso, que es el único dato que hay
+  ENTREGADOS:210     AH580HL: sin fecha de ingreso
+                       -> se usa la de egreso, que es el único dato que hay
+  ENTREGADOS:232     AG181XJ: sin fecha de ingreso
+                       -> se usa la de egreso, que es el único dato que hay
+  SIN INGRESO:6      AD890NP: facturado sin ingreso
+                       -> NO se importa: no es un trabajo del taller
+  SIN INGRESO:7      AD446QY: facturado sin ingreso
+                       -> NO se importa: no es un trabajo del taller
+
+NO SE IMPORTAN
+  TALLER:40          sin patente
+  ENTREGADOS:77      CFL504: sin fecha de ingreso ni de egreso
+  ENTREGADOS:263     AD714IT: sin fecha de ingreso ni de egreso
+  ENTREGADOS:305     sin patente
+
+LO QUE NO TRAE EL EXCEL Y VA A QUEDAR VACÍO
+  Fecha pactada de entrega: falta en 28 de 28 activos.
+    Sin ella no hay alerta de "fuera de plazo". No se estima, queda vacía.
+  Teléfono del cliente: no existe la columna. Entran los 313 sin teléfono.
+  Paños y días de chapa: las columnas existen pero están vacías en todas las filas.
+
+CÓMO SE EVITA DUPLICAR SI SE CORRE DOS VECES
+  Cada vehículo se marca con su origen (hoja y fila del Excel) en la columna
+  vehiculo.origen_import, con un índice único. Si el .sql se corre de nuevo,
+  las filas ya cargadas se saltean solas y no se duplica nada.
