@@ -276,18 +276,18 @@ console.log('\n6. STORAGE')
 // ── 7. Entrega completa ──────────────────────────────────────────
 console.log('\n7. ENTREGA')
 {
-  for (const etapa of ['preparacion', 'pintura', 'pre_entrega']) {
+  for (const etapa of ['preparacion', 'pintura', 'terminacion']) {
     await rpc(users.operario, 'taller_marcar_trabajo_hecho', { p_vehiculo: VEH })
     await rpc(users.coordinador, 'taller_validar_avance', { p_vehiculo: VEH })
   }
   const { body: t } = await rest(users.admin, `vehiculo?id=eq.${VEH}&select=etapa`)
-  check('la cadena completa llega a terminado', t[0].etapa === 'terminado', t[0].etapa)
+  check('la cadena completa llega a control de calidad', t[0].etapa === 'control_calidad', t[0].etapa)
 
   const d1 = await rpc(users.operario, 'taller_entregar', { p_vehiculo: VEH, p_fecha: null })
   check('operario no puede entregar', !d1.ok)
 
   const d2 = await rpc(users.coordinador, 'taller_entregar', { p_vehiculo: VEH, p_fecha: null })
-  check('coordinador entrega desde terminado', d2.ok, JSON.stringify(d2.body))
+  check('coordinador entrega desde control de calidad', d2.ok, JSON.stringify(d2.body))
 
   const d3 = await rpc(users.coordinador, 'taller_validar_avance', { p_vehiculo: VEH })
   check('un vehículo entregado ya no avanza', !d3.ok)

@@ -25,7 +25,7 @@ export const PERMISOS_ASIGNABLES_POR_CLIENTE = [
 ]
 
 export const ROLES_ASIGNABLES_POR_CLIENTE = ['empleado', 'dueno']
-export const ETAPAS_VALIDAS = ['chapa', 'preparacion', 'pintura', 'pre_entrega']
+export const ETAPAS_VALIDAS = ['chapa', 'preparacion', 'pintura', 'terminacion']
 
 /**
  * Revisa lo que pide quien llama. Devuelve un mensaje si algo no corresponde,

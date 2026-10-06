@@ -14,8 +14,8 @@ export const ETAPAS = [
   { id: 'chapa',       label: 'Chapa'       },
   { id: 'preparacion', label: 'Preparación' },
   { id: 'pintura',     label: 'Pintura'     },
-  { id: 'pre_entrega', label: 'Pre Entrega' },
-  { id: 'terminado',   label: 'Terminado'   },
+  { id: 'terminacion',     label: 'Terminación'     },
+  { id: 'control_calidad', label: 'Control Calidad' },
   { id: 'entregado',   label: 'Entregado'   },
 ]
 
@@ -24,12 +24,12 @@ export const ETAPAS_ACTIVAS = ETAPAS.filter(e => e.id !== 'entregado')
 
 /**
  * Etapas donde efectivamente trabaja un operario, y por lo tanto las únicas que
- * pueden ser su especialidad. Recepción es administrativa y Terminado es la
- * antesala de la entrega. Tiene que coincidir con taller_etapas_con_operario()
- * en la base, que es quien realmente lo hace cumplir.
+ * pueden ser su especialidad. Recepción es administrativa y Control Calidad es
+ * la antesala de la entrega, que valida quien coordina. Tiene que coincidir con
+ * taller_etapas_con_operario() en la base, que es quien lo hace cumplir.
  */
 export const ETAPAS_CON_OPERARIO = ETAPAS.filter(e =>
-  ['chapa', 'preparacion', 'pintura', 'pre_entrega'].includes(e.id)
+  ['chapa', 'preparacion', 'pintura', 'terminacion'].includes(e.id)
 )
 
 /**
@@ -70,8 +70,18 @@ export const EXCEPCIONES = [
 export const DIAS_ALERTA_TALLER = 20   // demasiado tiempo adentro
 export const DIAS_ALERTA_ETAPA  = 7    // estancado sin avanzar
 
+/**
+ * Nombres que tuvieron las etapas antes de la migración 0040. La bitácora
+ * guarda el id de la etapa tal como estaba en ese momento, así que sin esto los
+ * movimientos viejos se leerían como "pre_entrega" en crudo.
+ */
+const ETAPAS_ANTERIORES = {
+  pre_entrega: 'Pre Entrega',
+  terminado:   'Terminado',
+}
+
 export function etapaLabel(id) {
-  return ETAPAS.find(e => e.id === id)?.label || id
+  return ETAPAS.find(e => e.id === id)?.label || ETAPAS_ANTERIORES[id] || id
 }
 
 export function excepcionCfg(id) {
@@ -250,7 +260,7 @@ export function estado(v) {
     return { s: 'warn', tag: 'SIN AVANZAR', motivo: `${enEtapa} días sin avanzar` }
   if (vence !== null && vence <= 2)
     return { s: 'warn', tag: 'VENCE PRONTO', motivo: vence === 0 ? 'vence hoy' : `vence en ${vence} días` }
-  if (v.etapa === 'terminado')
+  if (v.etapa === 'control_calidad')
     return { s: 'ready', tag: 'LISTO PARA ENTREGAR', motivo: null }
   if (v.trabajo_hecho)
     return { s: 'ok', tag: 'ESPERA VALIDACIÓN', motivo: null }
@@ -273,7 +283,7 @@ export function proximaAccion(v) {
   }
   if (v.etapa === 'entregado')
     return { bloqueado: false, titulo: 'Entregado', detalle: 'Ya salió del taller.' }
-  if (v.etapa === 'terminado')
+  if (v.etapa === 'control_calidad')
     return {
       bloqueado: false,
       titulo: 'Registrar cobros y entregar',
