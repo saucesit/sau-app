@@ -427,6 +427,71 @@ console.log('\n10. ARCHIVO DE ENTREGADOS')
         JSON.stringify(montosOperario.body))
 }
 
+// ── 11. Dos órdenes activas del mismo auto ───────────────────────
+// A propósito sí, por error no. La guardia de 0042 rechaza la segunda salvo
+// que quien la carga confirme que es otra orden distinta.
+console.log('\n11. ORDEN DUPLICADA')
+{
+  const pat = 'ZZDUP' + String(Date.now()).slice(-4)
+  const base = {
+    empresa_id: EMPRESA_A, vehiculo: 'AUTO REPETIDO', cliente_nombre: 'CLIENTE',
+    compania: 'Particular', fecha_ingreso: new Date().toISOString().slice(0, 10),
+  }
+
+  const uno = await rest(users.completo, 'vehiculo', {
+    method: 'POST', headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ ...base, patente: pat }),
+  })
+  check('la primera orden entra', uno.ok, JSON.stringify(uno.body))
+  const ID1 = uno.body?.[0]?.id
+
+  const dos = await rest(users.completo, 'vehiculo', {
+    method: 'POST', headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ ...base, patente: pat }),
+  })
+  check('la segunda sin confirmar se rechaza', !dos.ok, `status ${dos.status}`)
+  check('y el mensaje dice qué orden ya existe',
+        /Ya hay una orden activa/.test(JSON.stringify(dos.body)), JSON.stringify(dos.body))
+
+  const tres = await rest(users.completo, 'vehiculo', {
+    method: 'POST', headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ ...base, patente: pat, orden_adicional: true }),
+  })
+  check('confirmando que es otra orden, sí entra', tres.ok, JSON.stringify(tres.body))
+  const ID2 = tres.body?.[0]?.id
+
+  // La pantalla usa esto para avisar ANTES de que falle el alta.
+  const consulta = await rpc(users.completo, 'taller_ordenes_activas',
+    { p_empresa: EMPRESA_A, p_patente: pat.toLowerCase() })
+  check('la consulta previa encuentra las dos, normalizando la patente',
+        Array.isArray(consulta.body) && consulta.body.length === 2, JSON.stringify(consulta.body))
+
+  // Editar una de las dos no puede fallar por existir la otra.
+  const editar = await rest(users.completo, `vehiculo?id=eq.${ID1}`, {
+    method: 'PATCH', headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ cliente_nombre: 'CLIENTE CORREGIDO' }),
+  })
+  check('editar una de las dos sigue funcionando', editar.ok, `status ${editar.status}`)
+
+  // Un entregado no compite: el mismo auto puede volver.
+  const otraPat = 'ZZENTR' + String(Date.now()).slice(-3)
+  const ent = await rest(users.completo, 'vehiculo', {
+    method: 'POST', headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ ...base, patente: otraPat, etapa: 'entregado',
+                           fecha_entrega: new Date().toISOString().slice(0, 10) }),
+  })
+  const vuelve = await rest(users.completo, 'vehiculo', {
+    method: 'POST', headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ ...base, patente: otraPat }),
+  })
+  check('un auto ya entregado puede volver sin confirmar nada', vuelve.ok, `status ${vuelve.status}`)
+
+  // Limpieza: se usa SAU, porque taller.eliminar está reservado.
+  for (const id of [ID1, ID2, ent.body?.[0]?.id, vuelve.body?.[0]?.id].filter(Boolean)) {
+    await rest(users.completo, `vehiculo?id=eq.${id}`, { method: 'DELETE' })
+  }
+}
+
 console.log(`\n${'='.repeat(52)}`)
 console.log(`RESULTADO: ${ok} pasan, ${fail} fallan`)
 if (fail) console.log('Fallaron:\n  - ' + fallos.join('\n  - '))

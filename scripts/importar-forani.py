@@ -237,6 +237,17 @@ def main():
     rep_activas = {p: vs for p, vs in repetidas.items()
                    if sum(1 for v in vs if v['etapa'] != 'entregado') > 1}
 
+    # La guardia de 0042 rechaza una segunda orden activa de la misma patente
+    # salvo que esté marcada como adicional a propósito. Acá se marca: son
+    # órdenes distintas del Excel, no una carga por error.
+    for v in listos:
+        v['adicional'] = False
+    for p, vs in rep_activas.items():
+        act = sorted([v for v in vs if v['etapa'] != 'entregado'],
+                     key=lambda v: (v['ingreso'], v['ref']))
+        for v in act[1:]:
+            v['adicional'] = True
+
     # ── Informe ───────────────────────────────────────────────────
     L = []
     w = L.append
@@ -279,11 +290,14 @@ def main():
 
     if rep_activas:
         w('PATENTES REPETIDAS ENTRE LOS ACTIVOS — se importan igual, como órdenes distintas')
+        w('  Las segundas entran marcadas como "orden adicional", que es lo que la')
+        w('  guardia de duplicados pide para dejarlas pasar a propósito.')
         for p, vs in sorted(rep_activas.items()):
             w(f'  {p}:')
             for v in vs:
+                marca = '  [orden adicional]' if v.get('adicional') else ''
                 w(f'      {v["ref"]:<18} ingreso {v["ingreso"]}  etapa {v["etapa"]:<16} '
-                  f'$ {v["m_cia"] + v["m_fra"] + v["m_par"]:,.2f}')
+                  f'$ {v["m_cia"] + v["m_fra"] + v["m_par"]:>14,.2f}{marca}')
         w('')
 
     otras_rep = {p: vs for p, vs in repetidas.items() if p not in rep_activas}
@@ -343,7 +357,7 @@ def main():
           f' and origen_import = {sql_txt(v["ref"])}) then')
         s('    insert into vehiculo (empresa_id, origen_import, patente, vehiculo, cliente_nombre,')
         s('      compania, productor, perito, nro_siniestro, fecha_ingreso, fecha_pactada,')
-        s('      fecha_entrega, etapa, etapa_desde, excepcion, excepcion_desde)')
+        s('      fecha_entrega, etapa, etapa_desde, excepcion, excepcion_desde, orden_adicional)')
         s(f'    values (v_empresa, {sql_txt(v["ref"])}, {sql_txt(v["patente"])},'
           f' {sql_txt(v["vehiculo"])}, {sql_txt(v["cliente"])},')
         s(f'      {sql_txt(v["compania"])}, {sql_txt(v["productor"])}, {sql_txt(v["perito"])},'
@@ -351,7 +365,8 @@ def main():
         s(f'      {sql_fecha(v["ingreso"])}, {sql_fecha(v["pactada"])}, {sql_fecha(v["entrega"])},'
           f' {sql_txt(v["etapa"])},')
         s(f'      {sql_fecha(v["ingreso"])}::timestamptz, {sql_txt(v["excepcion"])},'
-          f' {"null" if not v["excepcion"] else sql_fecha(v["ingreso"]) + "::timestamptz"})')
+          f' {"null" if not v["excepcion"] else sql_fecha(v["ingreso"]) + "::timestamptz"},'
+          f' {str(v["adicional"]).lower()})')
         s('    returning id into v_id;')
         s('')
         s('    update vehiculo_monto set')
