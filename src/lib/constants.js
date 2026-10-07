@@ -48,6 +48,9 @@ export const TODOS_PERMISOS = [
   'reportes.ver',
   'empresa.admin','empresa.rrhh',
   'taller.ver','taller.cargar','taller.trabajar','taller.validar','taller.montos',
+  // Subir la foto del trabajo va aparte de taller.cargar: el operario deja la
+  // foto de lo que hizo y no da de alta vehículos ni edita la ficha.
+  'taller.fotos',
   // Eliminar vehículos va aparte de empresa.admin: hay un perfil que ve y
   // opera todo pero no borra nada. Lo hace cumplir la policy vehiculo_delete.
   'taller.eliminar', 'taller.anular',

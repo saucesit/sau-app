@@ -33,20 +33,36 @@ export const ETAPAS_CON_OPERARIO = ETAPAS.filter(e =>
 )
 
 /**
- * Documentos que se pueden sumar a la ficha después de entregar el auto.
+ * Documentos que se pueden sumar a la ficha en cualquier momento.
  *
- * Agregar uno no reactiva nada: son filas de vehiculo_archivo y no tocan al
- * vehículo, así que sigue entregado y sus importes siguen fuera del tablero.
+ * No hay etapa que los habilite o los corte: la orden de la compañía puede
+ * llegar al tercer día, el recibo el día de la entrega y la factura un mes
+ * después. Agregar uno nunca toca al vehículo —son filas de vehiculo_archivo—
+ * así que no lo hace avanzar ni, si ya está entregado, lo reactiva.
  *
  * `economico` marca los que muestran plata. Esos no los ve quien no tiene
  * taller.montos, y eso lo hace cumplir la base, no esta lista.
  */
-export const DOCUMENTOS_ENTREGA = [
-  { id: 'orden_firmada', label: 'Orden firmada por el cliente', economico: true  },
-  { id: 'recibo',        label: 'Recibo',                       economico: true  },
-  { id: 'factura',       label: 'Factura',                      economico: true  },
-  { id: 'foto_entrega',  label: 'Foto de la entrega',           economico: false },
+export const DOCUMENTOS_FICHA = [
+  { id: 'orden_interna',  label: 'Orden de trabajo interna',     economico: false },
+  { id: 'orden_compania', label: 'Orden de la compañía',         economico: true  },
+  { id: 'orden_firmada',  label: 'Orden firmada por el cliente', economico: true  },
+  { id: 'recibo',         label: 'Recibo',                       economico: true  },
+  { id: 'factura',        label: 'Factura',                      economico: true  },
 ]
+
+/**
+ * Con qué tipo se archiva una foto según dónde está el vehículo.
+ *
+ * Las fotos se sacan todo el tiempo —al recibirlo, con el auto abierto, antes
+ * de entregarlo— y nadie va a elegir la categoría en el celular. La elige la
+ * etapa, que es justamente lo que distingue una foto de otra.
+ */
+export function tipoFoto(etapa) {
+  if (etapa === 'recepcion') return 'foto_ingreso'
+  if (etapa === 'entregado') return 'foto_entrega'
+  return 'foto_proceso'
+}
 
 /** Cómo se lee cada tipo de adjunto en la ficha. */
 export const TIPO_ARCHIVO = {

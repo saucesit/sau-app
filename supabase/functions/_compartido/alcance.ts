@@ -22,6 +22,8 @@ export const PERMISOS_ASIGNABLES_POR_CLIENTE = [
   'reportes.ver',
   'equipo.ver',
   'taller.ver', 'taller.cargar', 'taller.trabajar', 'taller.validar', 'taller.montos',
+  // Solo habilita subir la foto del proceso. Ver migración 0043.
+  'taller.fotos',
 ]
 
 export const ROLES_ASIGNABLES_POR_CLIENTE = ['empleado', 'dueno']

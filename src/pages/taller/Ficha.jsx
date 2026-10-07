@@ -7,7 +7,7 @@ import {
   diasEnTaller, diasEnEtapa, estado, proximaAccion, patenteLegible,
   pendiente, total, fmtMonto, fmtFecha,
   RUBROS, ESTADOS_FACTURACION, estadoFacturacion,
-  DOCUMENTOS_ENTREGA, TIPO_ARCHIVO,
+  DOCUMENTOS_FICHA, TIPO_ARCHIVO, tipoFoto,
 } from '../../lib/taller'
 
 function Panel({ legend, children }) {
@@ -59,6 +59,9 @@ export default function Ficha() {
   const puedeValidar  = tienePermiso('taller.validar')
   const puedeTrabajar = tienePermiso('taller.trabajar')
   const puedeCargar   = tienePermiso('taller.cargar')
+  // Solo la foto del trabajo. El operario la tiene; no da documentos ni
+  // habilita tocar el vehículo. Lo hace cumplir la base (migración 0043).
+  const puedeFotos    = tienePermiso('taller.fotos')
   const puedeAnular   = tienePermiso('taller.anular')
   // El permiso solo no alcanza: hay que tener cargadas las etapas del oficio.
   // Quien no las tiene veía el botón y recién al tocarlo le saltaba el error.
@@ -159,30 +162,40 @@ export default function Ficha() {
   }
 
   /**
-   * Papeles que llegan después de la entrega: orden firmada, recibo, factura.
+   * Suma archivos a la ficha, en cualquier etapa y también después de entregar.
    *
    * Van al mismo bucket y con el mismo formato de ruta, porque la policy
    * reconoce el tipo por el nombre del archivo. Solo escribe en
-   * vehiculo_archivo: no toca el vehículo, así que no lo reactiva ni le
-   * devuelve los importes al tablero.
+   * vehiculo_archivo: no toca el vehículo, así que no lo hace avanzar ni —si ya
+   * está entregado— lo reactiva.
+   *
+   * Acepta varios de una: las fotos se sacan de a tandas y subirlas una por
+   * una desde el celular es insufrible. Si una falla, corta ahí y avisa; las
+   * que ya subieron quedan, que es lo que se espera.
    */
-  async function adjuntar(tipo, file) {
-    if (!file) return
+  async function adjuntar(tipo, files) {
+    const lista = Array.from(files || [])
+    if (!lista.length) return
     setSubiendo(tipo)
     setError(null)
-    const ext  = file.name.split('.').pop()
-    const path = `${v.empresa_id}/${id}/${tipo}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`
 
-    const { error: upErr } = await supabase.storage.from('taller').upload(path, file)
-    if (upErr) {
-      setError('No se pudo subir el archivo: ' + upErr.message)
-      setSubiendo(null)
-      return
+    for (const file of lista) {
+      const ext  = file.name.split('.').pop()
+      const path = `${v.empresa_id}/${id}/${tipo}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`
+
+      const { error: upErr } = await supabase.storage.from('taller').upload(path, file)
+      if (upErr) {
+        setError(`No se pudo subir ${file.name}: ${upErr.message}`)
+        break
+      }
+      // El autor y la fecha los pone la base.
+      const { error: insErr } = await supabase.from('vehiculo_archivo')
+        .insert({ vehiculo_id: id, tipo, path, nombre: file.name })
+      if (insErr) {
+        setError(`${file.name}: ${insErr.message}`)
+        break
+      }
     }
-    // El autor y la fecha los pone la base.
-    const { error: insErr } = await supabase.from('vehiculo_archivo')
-      .insert({ vehiculo_id: id, tipo, path, nombre: file.name })
-    if (insErr) setError(insErr.message)
 
     await cargar()
     setSubiendo(null)
@@ -213,6 +226,12 @@ export default function Ficha() {
   const fotos     = archivos.filter(x => x.tipo.startsWith('foto'))
   // Todo lo que no es foto se lista como documento: órdenes, recibos, facturas.
   const pdfs      = archivos.filter(x => !x.tipo.startsWith('foto'))
+  // Qué clase de foto corresponde acá: de ingreso, del proceso o de la entrega.
+  const tFoto     = tipoFoto(v.etapa)
+  // Quien solo tiene taller.fotos sube la foto del trabajo y nada más: ni
+  // documentos, ni la foto de recepción, ni la de la entrega. Mostrarle un
+  // botón que la base va a rechazar sería peor que no mostrarlo.
+  const subeFoto  = puedeCargar || (puedeFotos && tFoto === 'foto_proceso')
 
   return (
     <main className="t-page">
@@ -392,7 +411,7 @@ export default function Ficha() {
         </dl>
       </Panel>
 
-      {(fotos.length > 0 || pdfs.length > 0 || entregado) && (
+      {(fotos.length > 0 || pdfs.length > 0 || subeFoto) && (
         <Panel legend="RESPALDO">
           {fotos.length > 0 && (
             <div className="t-fotos" style={{ marginBottom: pdfs.length ? 14 : 0 }}>
@@ -431,24 +450,40 @@ export default function Ficha() {
             </div>
           ))}
 
-          {/* Los papeles que llegan después de entregar. Agregar uno no
-              reactiva el vehículo: sigue entregado y fuera de los totales. */}
-          {entregado && puedeCargar && (
+          {/* Sumar archivos no es exclusivo de la recepción ni de la entrega:
+              las fotos y los papeles aparecen en cualquier momento. Agregar uno
+              no mueve al vehículo, y en un entregado no lo reactiva. */}
+          {subeFoto && (
             <>
               <p className="t-aviso" style={{ marginTop: 14 }}>
-                Sumar un documento no reactiva el vehículo ni devuelve sus importes al tablero.
+                {!puedeCargar
+                  ? 'Podés sumar fotos del trabajo. Los documentos los carga administración.'
+                  : entregado
+                    ? 'Sumar un documento no reactiva el vehículo ni devuelve sus importes al tablero.'
+                    : 'Podés sumar fotos y papeles en cualquier etapa. No hace avanzar el vehículo.'}
               </p>
               <div className="t-grid" style={{ marginTop: 10 }}>
-                {DOCUMENTOS_ENTREGA
+                {/* Las fotos van en un solo lugar y de a varias: la etapa decide
+                    si son de ingreso, del proceso o de la entrega. */}
+                <label className="t-drop" style={{ margin: 0 }}>
+                  {subiendo === tFoto ? 'Subiendo…' : `Agregar ${TIPO_ARCHIVO[tFoto].toLowerCase()}`}
+                  <input type="file" hidden multiple accept="image/*"
+                         disabled={subiendo !== null}
+                         onChange={ev => {
+                           adjuntar(tFoto, ev.target.files)
+                           ev.target.value = ''
+                         }} />
+                </label>
+
+                {puedeCargar && DOCUMENTOS_FICHA
                   .filter(d => !d.economico || verMontos)
                   .map(d => (
                     <label key={d.id} className="t-drop" style={{ margin: 0 }}>
                       {subiendo === d.id ? 'Subiendo…' : `Agregar ${d.label.toLowerCase()}`}
-                      <input type="file" hidden
-                             accept={d.id === 'foto_entrega' ? 'image/*' : 'application/pdf,image/*'}
+                      <input type="file" hidden accept="application/pdf,image/*"
                              disabled={subiendo !== null}
                              onChange={ev => {
-                               adjuntar(d.id, ev.target.files?.[0])
+                               adjuntar(d.id, ev.target.files)
                                ev.target.value = ''
                              }} />
                     </label>

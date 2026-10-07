@@ -284,7 +284,7 @@ interfaz los oculte. Separándolos, quien no tiene `taller.montos` recibe cero f
 | `vehiculo_evento` | `vehiculo_evento_select` | SELECT | `taller.ver` |
 | `vehiculo_evento` | `vehiculo_evento_insert` | INSERT | `taller.ver` |
 | `vehiculo_archivo` | `vehiculo_archivo_select` | SELECT | `taller.ver` |
-| `vehiculo_archivo` | `vehiculo_archivo_insert` | INSERT | `taller.cargar` |
+| `vehiculo_archivo` | `vehiculo_archivo_insert` | INSERT | `taller.cargar`, o `taller.fotos` solo para `foto_proceso` |
 
 `vehiculo_evento` y `vehiculo_archivo` **no tienen policies de UPDATE ni DELETE**: la bitácora es
 append-only por diseño.
@@ -293,7 +293,7 @@ append-only por diseño.
 
 | Perfil | Permisos | Ve montos | Carga | Marca trabajo | Valida y avanza | Borra |
 |---|---|---|---|---|---|---|
-| Operario | `taller.ver`, `taller.trabajar` | No | No | Sí | No | No |
+| Operario | `taller.ver`, `taller.trabajar`, `taller.fotos` | No | Solo la foto del proceso | Sí | No | No |
 | Coordinador | + `taller.cargar`, `taller.validar` | No | Sí | Sí | Sí | No |
 | Administración | + `taller.montos` | Sí | Sí | Sí | Sí | No |
 | Rol completo | todos + `empresa.admin` | Sí | Sí | Sí | Sí | Sí |

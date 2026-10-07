@@ -43,11 +43,11 @@ begin
        array[]::text[]),
 
       ('chapista@local.test', 'Chapista', v_taller, 'empleado',
-       array['taller.ver','taller.trabajar'],
+       array['taller.ver','taller.trabajar','taller.fotos'],
        array['chapa','preparacion']),
 
       ('pintor@local.test', 'Pintor', v_taller, 'empleado',
-       array['taller.ver','taller.trabajar'],
+       array['taller.ver','taller.trabajar','taller.fotos'],
        array['pintura','terminacion']),
 
       ('recepcion@local.test', 'Recepción', v_taller, 'empleado',
@@ -57,7 +57,7 @@ begin
       -- Reproduce a propósito el caso que quedó abierto: permiso para trabajar
       -- pero sin etapas cargadas, así se puede probar qué ve esa persona.
       ('sinetapas@local.test', 'Sin Etapas', v_taller, 'empleado',
-       array['taller.ver','taller.trabajar'],
+       array['taller.ver','taller.trabajar','taller.fotos'],
        array[]::text[]),
 
       ('almacen@local.test', 'Almacenero', v_comercio, 'dueno',

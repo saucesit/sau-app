@@ -50,8 +50,10 @@ export const TAREAS = [
     id: 'taller_trabajo',
     icon: '🔧',
     titulo: 'Trabaja en el taller',
-    descripcion: 'Ve los vehículos, marca su trabajo como realizado y suma observaciones. No ve montos',
-    permisos: ['taller.ver', 'taller.trabajar'],
+    descripcion: 'Ve los vehículos, marca su trabajo como realizado, suma observaciones y fotos de lo que hizo. No ve montos ni carga documentos',
+    // taller.fotos habilita solo la foto del proceso: no da documentos, no da
+    // alta ni edición de vehículos. Ver migración 0043.
+    permisos: ['taller.ver', 'taller.trabajar', 'taller.fotos'],
     clave: 'taller.trabajar',
     modulo: 'taller',
     colorActivo: 'bg-sky-500',
