@@ -27,6 +27,12 @@ begin
       ('taller-a-completo@prueba.sau',    'Full A',    v_a, 'dueno',    array['taller.ver','taller.trabajar','taller.cargar','taller.validar','taller.montos','empresa.admin','taller.anular'], array['chapa','preparacion','pintura','terminacion']),
       -- Perfil Administrador: ve y opera todo, pero no borra ni toca el equipo.
       ('taller-a-administrador@prueba.sau','Admin Full', v_a, 'empleado', array['taller.ver','taller.trabajar','taller.cargar','taller.validar','taller.montos','reportes.ver'], array['chapa','pintura']),
+      -- Perfil Contador (0047): adjunta documentación y carga facturación, y
+      -- nada más. Sin taller.cargar: no da de alta ni edita fichas.
+      ('taller-a-contador@prueba.sau',    'Conta A',   v_a, 'empleado', array['taller.ver','taller.montos','taller.documentos'], array[]::text[]),
+      -- Y uno con documentos pero SIN montos, para comprobar que los papeles
+      -- con importes le siguen estando vedados.
+      ('taller-a-docs@prueba.sau',        'Docs A',    v_a, 'empleado', array['taller.ver','taller.documentos'], array[]::text[]),
       ('taller-b-admin@prueba.sau',       'Admin B',   v_b, 'empleado', array['taller.ver','taller.cargar','taller.validar','taller.montos'], array[]::text[])
     ) as t(email, nombre, empresa, rol, permisos, etapas)
   loop

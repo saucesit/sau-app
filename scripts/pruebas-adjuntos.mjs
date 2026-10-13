@@ -87,11 +87,16 @@ const U = local
   ? { duena: 'duena@local.test', operario: 'chapista@local.test',
       sinMontos: 'recepcion@local.test' }
   : { duena: 'taller-a-completo@prueba.sau', operario: 'taller-a-operario@prueba.sau',
-      sinMontos: 'taller-a-coordinador@prueba.sau' }
+      sinMontos: 'taller-a-coordinador@prueba.sau',
+      contador: 'taller-a-contador@prueba.sau', soloDocs: 'taller-a-docs@prueba.sau' }
 
 const duena     = await login(U.duena)
 const operario  = await login(U.operario)
 const sinMontos = await login(U.sinMontos)
+// El perfil Contador existe solo contra el proyecto autorizado: en la base
+// local el seed de usuarios es otro y esta sección se saltea.
+const contador  = U.contador ? await login(U.contador) : null
+const soloDocs  = U.soloDocs ? await login(U.soloDocs) : null
 
 const { body: ent } = await rest(duena,
   'vehiculo?etapa=eq.entregado&select=id,patente,empresa_id,etapa,fecha_entrega&limit=1')
@@ -451,6 +456,137 @@ console.log('\n10. taller.cargar SIGUE IGUAL')
   const { body: res } = await rpc(duena, 'sau_permisos_reservados', {})
   check('y no entró en la de reservados de SAU',
         Array.isArray(res) && !res.includes('taller.fotos'), JSON.stringify(res))
+}
+
+// ── 11. taller.documentos: el contador sube facturas ──────────────
+// Migración 0047. El contador tenía que poder adjuntar la facturación sin que
+// eso le diera de alta vehículos ni edición de ficha, que es lo que arrastra
+// taller.cargar.
+console.log('\n11. EL CONTADOR ADJUNTA DOCUMENTACIÓN')
+if (!contador) { console.log('  (perfil Contador solo contra el proyecto autorizado)') }
+else {
+  const { body: proc } = await rest(duena,
+    'vehiculo?etapa=eq.pintura&select=id,patente,empresa_id&limit=1')
+  if (!proc?.length) { console.log('  (sin vehículo en pintura)') }
+  else {
+    const W = proc[0]
+    const base = `${W.empresa_id}/${W.id}`
+
+    // Lo que sí: los cinco documentos, porque además tiene taller.montos.
+    for (const tipo of ['orden_interna', 'orden_compania', 'orden_firmada', 'recibo', 'factura']) {
+      const ruta = `${base}/${tipo}-${marca}-conta.pdf`
+      const s = await subir(contador, ruta, '%PDF-1.4', 'application/pdf')
+      const i = await rest(contador, 'vehiculo_archivo', {
+        method: 'POST', headers: { Prefer: 'return=representation' },
+        body: JSON.stringify({ vehiculo_id: W.id, tipo, path: ruta, nombre: `${tipo}.pdf` }),
+      })
+      check(`sube ${tipo}`, s.ok && i.ok, `bucket ${s.status} / ficha ${i.status}`)
+      if (tipo === 'factura') check('y queda con él como autor', !!i.body?.[0]?.autor_id)
+    }
+
+    // Una factura fotografiada con el celular también entra: manda el tipo,
+    // no la extensión del archivo.
+    const foto = `${base}/factura-${marca}-sacada.jpg`
+    const sf = await subir(contador, foto, 'x', 'image/jpeg')
+    const nf = await rest(contador, 'vehiculo_archivo', {
+      method: 'POST', body: JSON.stringify({ vehiculo_id: W.id, tipo: 'factura', path: foto }) })
+    check('una factura fotografiada entra igual', sf.ok && nf.ok, `${sf.status} / ${nf.status}`)
+
+    // Lo que no: ninguna foto del proceso.
+    for (const tipo of ['foto_ingreso', 'foto_proceso', 'foto_entrega']) {
+      const ruta = `${base}/${tipo}-${marca}-conta.png`
+      const s = await subir(contador, ruta, 'x', 'image/png')
+      const i = await rest(contador, 'vehiculo_archivo', {
+        method: 'POST', body: JSON.stringify({ vehiculo_id: W.id, tipo, path: ruta }) })
+      check(`no sube ${tipo}`, !s.ok && !i.ok, `bucket ${s.status} / ficha ${i.status}`)
+    }
+
+    // Y el permiso no trajo nada más de arrastre.
+    const alta = await rest(contador, 'vehiculo', {
+      method: 'POST', body: JSON.stringify({
+        empresa_id: W.empresa_id, patente: `ZZCONTA${marca % 1000}`,
+        vehiculo: 'ALTA INDEBIDA', cliente_nombre: 'X', compania: 'Particular',
+        fecha_ingreso: '2026-10-13' }) })
+    check('no da de alta un vehículo', !alta.ok, `status ${alta.status}`)
+
+    const edita = await rest(contador, `vehiculo?id=eq.${W.id}`, {
+      method: 'PATCH', headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({ cliente_nombre: 'TOCADO POR EL CONTADOR' }) })
+    check('no edita la ficha',
+          !edita.ok || (Array.isArray(edita.body) && edita.body.length === 0), `status ${edita.status}`)
+
+    const avanza = await rpc(contador, 'taller_validar_avance', { p_vehiculo: W.id })
+    check('no avanza etapas', !avanza.ok)
+
+    const trabaja = await rpc(contador, 'taller_marcar_trabajo_hecho', { p_vehiculo: W.id })
+    check('no marca trabajo', !trabaja.ok)
+
+    const { body: suyo } = await rest(contador,
+      `vehiculo_archivo?vehiculo_id=eq.${W.id}&tipo=eq.factura&anulado_en=is.null&select=id&limit=1`)
+    if (suyo?.[0]?.id) {
+      const an = await rpc(contador, 'taller_anular_archivo',
+        { p_archivo: suyo[0].id, p_motivo: 'me equivoqué' })
+      check('no anula ni lo que subió él', !an.ok, JSON.stringify(an.body))
+    }
+
+    // Lo que sí, porque tiene taller.montos: la facturación.
+    const fact = await rpc(contador, 'taller_registrar_facturacion',
+      { p_vehiculo: W.id, p_rubro: 'particular', p_estado: 'no_aplica' })
+    check('registra facturación', fact.ok, JSON.stringify(fact.body))
+    await rpc(duena, 'taller_registrar_facturacion',
+      { p_vehiculo: W.id, p_rubro: 'particular', p_estado: 'pendiente' })
+
+    // ── Documentos SIN montos: los económicos siguen vedados ──
+    const rutaOi = `${base}/orden_interna-${marca}-docs.pdf`
+    const sOi = await subir(soloDocs, rutaOi, '%PDF-1.4', 'application/pdf')
+    const iOi = await rest(soloDocs, 'vehiculo_archivo', {
+      method: 'POST', body: JSON.stringify({
+        vehiculo_id: W.id, tipo: 'orden_interna', path: rutaOi }) })
+    check('sin montos sube la orden interna', sOi.ok && iOi.ok, `${sOi.status} / ${iOi.status}`)
+
+    for (const tipo of ['factura', 'recibo', 'orden_compania', 'orden_firmada']) {
+      const ruta = `${base}/${tipo}-${marca}-docs.pdf`
+      const s = await subir(soloDocs, ruta, 'x', 'application/pdf')
+      const i = await rest(soloDocs, 'vehiculo_archivo', {
+        method: 'POST', body: JSON.stringify({ vehiculo_id: W.id, tipo, path: ruta }) })
+      check(`sin montos NO sube ${tipo}`, !s.ok && !i.ok, `bucket ${s.status} / ficha ${i.status}`)
+    }
+
+    const { body: ve } = await rest(soloDocs,
+      `vehiculo_archivo?vehiculo_id=eq.${W.id}&select=tipo`)
+    check('y tampoco ve los documentos con importes',
+          !(ve || []).some(x => ['factura','recibo','orden_compania','orden_firmada'].includes(x.tipo)),
+          JSON.stringify((ve || []).map(x => x.tipo)))
+  }
+}
+
+// ── 12. Nadie perdió nada con el permiso nuevo ────────────────────
+console.log('\n12. LOS DE SIEMPRE SIGUEN IGUAL')
+{
+  const { body: proc } = await rest(duena,
+    'vehiculo?etapa=eq.terminacion&select=id,empresa_id&limit=1')
+  if (!proc?.length) { console.log('  (sin vehículo en terminación)') }
+  else {
+    const W = proc[0]
+    const base = `${W.empresa_id}/${W.id}`
+    for (const [tipo, mime] of [['foto_proceso','image/png'], ['orden_interna','application/pdf'],
+                                ['factura','application/pdf']]) {
+      const ruta = `${base}/${tipo}-${marca}-sigue.${mime === 'image/png' ? 'png' : 'pdf'}`
+      const s = await subir(duena, ruta, 'x', mime)
+      const i = await rest(duena, 'vehiculo_archivo', {
+        method: 'POST', body: JSON.stringify({ vehiculo_id: W.id, tipo, path: ruta }) })
+      check(`taller.cargar sigue subiendo ${tipo}`, s.ok && i.ok, `${s.status} / ${i.status}`)
+    }
+    const op = await subir(operario, `${base}/foto_proceso-${marca}-op2.png`, 'x', 'image/png')
+    check('taller.fotos sigue subiendo la foto del proceso', op.ok, `status ${op.status}`)
+
+    const { body: asg } = await rpc(duena, 'sau_permisos_asignables_por_cliente', {})
+    check('taller.documentos es asignable por el cliente',
+          Array.isArray(asg) && asg.includes('taller.documentos'), JSON.stringify(asg))
+    const { body: res } = await rpc(duena, 'sau_permisos_reservados', {})
+    check('y no entró en los reservados de SAU',
+          Array.isArray(res) && !res.includes('taller.documentos'))
+  }
 }
 
 console.log(`\n${'='.repeat(52)}`)

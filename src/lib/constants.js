@@ -51,6 +51,9 @@ export const TODOS_PERMISOS = [
   // Subir la foto del trabajo va aparte de taller.cargar: el operario deja la
   // foto de lo que hizo y no da de alta vehículos ni edita la ficha.
   'taller.fotos',
+  // Y adjuntar documentación va aparte por lo mismo: el contador sube facturas
+  // sin poder dar de alta ni editar fichas.
+  'taller.documentos',
   // Eliminar vehículos va aparte de empresa.admin: hay un perfil que ve y
   // opera todo pero no borra nada. Lo hace cumplir la policy vehiculo_delete.
   'taller.eliminar', 'taller.anular',

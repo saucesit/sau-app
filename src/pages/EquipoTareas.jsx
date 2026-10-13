@@ -85,6 +85,20 @@ export const TAREAS = [
     colorTexto:  'text-amber-700',
   },
   {
+    id: 'taller_documentos',
+    icon: '🧾',
+    titulo: 'Adjunta documentación',
+    descripcion: 'Sube facturas, recibos y órdenes a la ficha. No da de alta vehículos ni edita sus datos. Para los documentos con importes hace falta además ver los montos',
+    // taller.documentos habilita solo adjuntar los cinco tipos que no son foto.
+    // Va siempre con taller.ver: subir a ciegas no le sirve a nadie. Ver 0047.
+    permisos: ['taller.ver', 'taller.documentos'],
+    clave: 'taller.documentos',
+    modulo: 'taller',
+    colorActivo: 'bg-emerald-600',
+    colorFondo:  'bg-emerald-50 border-emerald-200',
+    colorTexto:  'text-emerald-700',
+  },
+  {
     id: 'taller_anula',
     icon: '🚫',
     titulo: 'Puede anular adjuntos',
@@ -127,6 +141,11 @@ export const PRESETS = [
     tareas: ['taller_trabajo'] },
   { id: 'admin_taller', label: 'Administrador', icon: '💲', modulo: 'taller',
     tareas: ['taller_trabajo', 'taller_coordina', 'taller_montos', 'reportes'] },
+  // El contador entra a cargar la facturación y a adjuntar los papeles, y nada
+  // más: no da de alta, no edita fichas, no mueve el flujo. Lo que lo hace
+  // posible es que adjuntar documentos sea su propio permiso (0047).
+  { id: 'contador', label: 'Contador', icon: '🧾', modulo: 'taller',
+    tareas: ['taller_documentos', 'taller_montos'] },
   // Completo lo asigna SAU, no el cliente: lleva empresa.admin. Y NO lleva
   // taller.eliminar, que queda reservado mientras borrar un vehículo siga
   // llevándose su historial.

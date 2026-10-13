@@ -88,6 +88,9 @@ export default function Ficha() {
   // Solo la foto del trabajo. El operario la tiene; no da documentos ni
   // habilita tocar el vehículo. Lo hace cumplir la base (migración 0043).
   const puedeFotos    = tienePermiso('taller.fotos')
+  // Solo adjuntar documentos. El contador lo tiene; no da alta ni edición, y
+  // los que llevan importes siguen pidiendo taller.montos (migración 0047).
+  const puedeDocs     = tienePermiso('taller.documentos')
   const puedeAnular   = tienePermiso('taller.anular')
   // El permiso solo no alcanza: hay que tener cargadas las etapas del oficio.
   // Quien no las tiene veía el botón y recién al tocarlo le saltaba el error.
@@ -383,6 +386,9 @@ export default function Ficha() {
   // documentos, ni la foto de recepción, ni la de la entrega. Mostrarle un
   // botón que la base va a rechazar sería peor que no mostrarlo.
   const subeFoto  = puedeCargar || (puedeFotos && tFoto === 'foto_proceso')
+  // Los documentos los sube quien carga o quien tiene el permiso específico.
+  // La lista de tipos la sigue filtrando verMontos, como siempre.
+  const subeDocs  = puedeCargar || puedeDocs
 
   return (
     <main className="t-page">
@@ -625,7 +631,7 @@ export default function Ficha() {
         )}
       </Panel>
 
-      {(fotos.length > 0 || pdfs.length > 0 || subeFoto) && (
+      {(fotos.length > 0 || pdfs.length > 0 || subeFoto || subeDocs) && (
         <Panel legend="RESPALDO">
           {fotos.length > 0 && (
             <div className="t-fotos" style={{ marginBottom: pdfs.length ? 14 : 0 }}>
@@ -667,29 +673,33 @@ export default function Ficha() {
           {/* Sumar archivos no es exclusivo de la recepción ni de la entrega:
               las fotos y los papeles aparecen en cualquier momento. Agregar uno
               no mueve al vehículo, y en un entregado no lo reactiva. */}
-          {subeFoto && (
+          {(subeFoto || subeDocs) && (
             <>
               <p className="t-aviso" style={{ marginTop: 14 }}>
-                {!puedeCargar
-                  ? 'Podés sumar fotos del trabajo. Los documentos los carga administración.'
-                  : entregado
-                    ? 'Sumar un documento no reactiva el vehículo ni devuelve sus importes al tablero.'
-                    : 'Podés sumar fotos y papeles en cualquier etapa. No hace avanzar el vehículo.'}
+                {!subeFoto
+                  ? 'Podés adjuntar documentación en cualquier momento, también después de entregar.'
+                  : !subeDocs
+                    ? 'Podés sumar fotos del trabajo. Los documentos los carga administración.'
+                    : entregado
+                      ? 'Sumar un documento no reactiva el vehículo ni devuelve sus importes al tablero.'
+                      : 'Podés sumar fotos y papeles en cualquier etapa. No hace avanzar el vehículo.'}
               </p>
               <div className="t-grid" style={{ marginTop: 10 }}>
                 {/* Las fotos van en un solo lugar y de a varias: la etapa decide
                     si son de ingreso, del proceso o de la entrega. */}
-                <label className="t-drop" style={{ margin: 0 }}>
-                  {subiendo === tFoto ? 'Subiendo…' : `Agregar ${TIPO_ARCHIVO[tFoto].toLowerCase()}`}
-                  <input type="file" hidden multiple accept="image/*"
-                         disabled={subiendo !== null}
-                         onChange={ev => {
-                           adjuntar(tFoto, ev.target.files)
-                           ev.target.value = ''
-                         }} />
-                </label>
+                {subeFoto && (
+                  <label className="t-drop" style={{ margin: 0 }}>
+                    {subiendo === tFoto ? 'Subiendo…' : `Agregar ${TIPO_ARCHIVO[tFoto].toLowerCase()}`}
+                    <input type="file" hidden multiple accept="image/*"
+                           disabled={subiendo !== null}
+                           onChange={ev => {
+                             adjuntar(tFoto, ev.target.files)
+                             ev.target.value = ''
+                           }} />
+                  </label>
+                )}
 
-                {puedeCargar && DOCUMENTOS_FICHA
+                {subeDocs && DOCUMENTOS_FICHA
                   .filter(d => !d.economico || verMontos)
                   .map(d => (
                     <label key={d.id} className="t-drop" style={{ margin: 0 }}>

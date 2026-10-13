@@ -241,11 +241,20 @@ if (invitadoFinal) {
   await rest(adminA, `membresia?empresa_id=eq.${EMPRESA_A}&usuario_id=eq.${invitadoFinal.uid}`,
              { method: 'DELETE' })
 }
-const quedan = await rest(adminA, `membresia?empresa_id=eq.${EMPRESA_A}&select=id`)
+// Lo que importa no es cuántos quedan —el seed crece cada vez que aparece un
+// perfil nuevo— sino que esta corrida no haya dejado a nadie suelto. Se
+// comprueba contra el seed, no contra un número escrito a mano.
+const quedan = await rest(adminA, `membresia?empresa_id=eq.${EMPRESA_A}&select=id,usuario_id`)
 const invs   = await rest(adminA, `invitacion?empresa_id=eq.${EMPRESA_A}&select=id`)
-// 8 desde 0035: se sumó taller-a-administrador para probar el perfil nuevo.
-check('la empresa de prueba queda con su equipo original', quedan.body?.length === 8,
+check('la membresía que creó esta corrida ya no está',
+      !invitadoFinal || !(quedan.body || []).some(m => m.usuario_id === invitadoFinal.uid),
       `quedaron ${quedan.body?.length}`)
+
+const { body: perfiles } = await rest(adminA,
+  `profile?id=in.(${(quedan.body || []).map(m => m.usuario_id).join(',')})&select=id`)
+check('y todos los que quedan son del seed de prueba',
+      (perfiles || []).length === (quedan.body || []).length,
+      `${perfiles?.length} de ${quedan.body?.length}`)
 check('y sin invitaciones sueltas', invs.body?.length === 0, `quedaron ${invs.body?.length}`)
 
 console.log(`\n${'='.repeat(52)}`)
