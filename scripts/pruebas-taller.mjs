@@ -378,12 +378,20 @@ console.log('\n9. COBROS SOLO POR LA FUNCIÓN')
         /compañía/i.test(ev[0]?.texto || '') && /validado/.test(ev[0]?.texto || ''),
         ev[0]?.texto)
 
-  // Los montos en sí se siguen pudiendo editar
-  const monto = await rest(users.admin, `vehiculo_monto?vehiculo_id=eq.${VEH}`, {
+  // Desde la 0044 los importes tampoco se tocan por API directa: van por
+  // taller_registrar_monto, que deja el movimiento en la bitácora.
+  const patchMonto = await rest(users.admin, `vehiculo_monto?vehiculo_id=eq.${VEH}`, {
     method: 'PATCH', headers: { Prefer: 'return=representation' },
     body: JSON.stringify({ monto_compania: 123456 }),
   })
-  check('los montos sí se editan por API', monto.ok, `status ${monto.status}`)
+  check('el importe no se edita por API directa', !patchMonto.ok, `status ${patchMonto.status}`)
+
+  const porRpc = await rpc(users.admin, 'taller_registrar_monto',
+    { p_vehiculo: VEH, p_rubro: 'compania', p_monto: 123456 })
+  check('pero sí con la función del taller', porRpc.ok, JSON.stringify(porRpc.body))
+
+  const { body: mm } = await rest(users.admin, `vehiculo_monto?vehiculo_id=eq.${VEH}&select=monto_compania`)
+  check('y el importe quedó guardado', Number(mm?.[0]?.monto_compania) === 123456, JSON.stringify(mm))
 }
 
 // ── 10. Archivo de entregados ────────────────────────────────────

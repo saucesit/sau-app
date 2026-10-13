@@ -53,6 +53,8 @@ export default function Ficha() {
   const [error,    setError]    = useState(null)
   // Número de factura en edición, por rubro. Se rellena con lo guardado.
   const [facturas, setFacturas] = useState({})
+  // Importe en edición, por rubro. Se rellena con lo guardado, igual que arriba.
+  const [montos,   setMontos]   = useState({})
   const [subiendo, setSubiendo] = useState(null)
 
   const verMontos     = tienePermiso('taller.montos')
@@ -82,22 +84,28 @@ export default function Ficha() {
     ])
     // Sin permiso taller.montos la consulta vuelve vacía y la ficha no muestra precios.
     setV(veh ? { ...veh, ...(monto || {}) } : null)
-    setEventos(evs || [])
     setFEntrega(veh?.fecha_entrega || new Date().toISOString().slice(0, 10))
     setFacturas(Object.fromEntries(RUBROS.map(r => [r.id, monto?.[r.factura] || ''])))
+    setMontos(Object.fromEntries(RUBROS.map(r => [r.id, String(monto?.[r.monto] ?? '')])))
+
+    // Quién hizo cada cosa, en una sola consulta para los movimientos y los
+    // papeles. La policy profile_empresa deja leer el perfil de los compañeros
+    // de empresa; si alguno no se encuentra, se muestra igual sin el nombre.
+    // Los movimientos viejos no tienen autor y se muestran sin él.
+    const autores = [...new Set([
+      ...(evs  || []).map(e => e.autor_id),
+      ...(arch || []).flatMap(a => [a.autor_id, a.anulado_por]),
+    ].filter(Boolean))]
+    let porId = {}
+    if (autores.length) {
+      const { data: perfiles } = await supabase
+        .from('profile').select('id, nombre, apellido').in('id', autores)
+      porId = Object.fromEntries((perfiles || []).map(p => [p.id, p]))
+    }
+
+    setEventos((evs || []).map(e => ({ ...e, autor: porId[e.autor_id] || null })))
 
     if (arch?.length) {
-      // Quién subió cada papel. La policy profile_empresa deja leer el perfil
-      // de los compañeros de empresa; si alguno no se encuentra, se muestra
-      // igual el documento sin el nombre.
-      const autores = [...new Set(arch.flatMap(a => [a.autor_id, a.anulado_por]).filter(Boolean))]
-      let porId = {}
-      if (autores.length) {
-        const { data: perfiles } = await supabase
-          .from('profile').select('id, nombre, apellido').in('id', autores)
-        porId = Object.fromEntries((perfiles || []).map(p => [p.id, p]))
-      }
-
       const firmados = await Promise.all(arch.map(async a => {
         const { data } = await supabase.storage.from('taller').createSignedUrl(a.path, 3600)
         return { ...a, url: data?.signedUrl || null,
@@ -141,6 +149,37 @@ export default function Ficha() {
       p_estado:   nuevoEstado,
       p_factura:  nuevoEstado === 'facturado' ? (facturas[rubro.id] || null) : null,
     })
+  /**
+   * Corregir un importe después del alta: Forani carga rápido, muchas veces en
+   * cero, y completa cuando la compañía aprueba la orden.
+   *
+   * Cambiar el importe de un concepto ya facturado se permite —bloquearlo
+   * empujaría a volverlo a pendiente y se perdería el número de factura— pero
+   * se avisa antes, porque el papel emitido deja de coincidir. Ni el estado ni
+   * el número se tocan: eso lo garantiza la función del servidor.
+   */
+  async function guardarMonto(rubro) {
+    const crudo = montos[rubro.id]
+    if (crudo === undefined || crudo === '') return
+    const nuevo = Number(crudo)
+    if (!Number.isFinite(nuevo) || nuevo < 0) {
+      setError('El importe tiene que ser un número de cero para arriba.')
+      return
+    }
+    if (nuevo === Number(v[rubro.monto] || 0)) return
+
+    if (estadoFacturacion(v, rubro) === 'facturado' && !window.confirm(
+      `${rubro.label} ya está facturado${v[rubro.factura] ? ` con la factura ${v[rubro.factura]}` : ''}.\n\n` +
+      `Vas a cambiar el importe de ${fmtMonto(v[rubro.monto])} a ${fmtMonto(nuevo)}.\n` +
+      'El estado y el número de factura quedan como están, y el cambio se registra ' +
+      'en el reporte diario con tu nombre.\n\n¿Lo guardo igual?'
+    )) return
+
+    await llamar('taller_registrar_monto', {
+      p_vehiculo: id, p_rubro: rubro.id, p_monto: nuevo,
+    })
+  }
+
   const toggleExcepcion = (exId) =>
     llamar('taller_cambiar_excepcion', { p_vehiculo: id, p_excepcion: v.excepcion === exId ? null : exId })
 
@@ -324,6 +363,22 @@ export default function Ficha() {
                 <div className="t-rubro-head">
                   <span className="t-rubro-n">{r.label}</span>
                   <span className="t-rubro-m">{fmtMonto(v[r.monto])}</span>
+                </div>
+
+                {/* El importe se completa o se corrige acá: el alta deja de ser
+                    la única oportunidad. El estado y el número de factura no
+                    se tocan al cambiarlo. */}
+                <div className="t-fila" style={{ marginBottom: 8 }}>
+                  <input className="t-input mono" type="number" min="0" step="0.01"
+                         placeholder="Importe"
+                         value={montos[r.id] ?? ''}
+                         disabled={accion}
+                         onChange={ev => setMontos(p => ({ ...p, [r.id]: ev.target.value }))}
+                         onKeyDown={ev => { if (ev.key === 'Enter') guardarMonto(r) }} />
+                  <button className="t-btn fantasma" disabled={accion}
+                          onClick={() => guardarMonto(r)}>
+                    Guardar importe
+                  </button>
                 </div>
 
                 <div className="t-opciones tres">
@@ -512,6 +567,8 @@ export default function Ficha() {
               <div key={ev.id} className={`t-ev${ev.tipo === 'nota' ? ' nota' : ''}`}>
                 <p className="t-ev-t">{ev.texto}</p>
                 <p className="t-ev-m">
+                  {ev.autor &&
+                    `${ev.autor.nombre}${ev.autor.apellido ? ' ' + ev.autor.apellido : ''} · `}
                   {new Date(ev.created_at).toLocaleString('es-AR', {
                     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
                   })}

@@ -117,11 +117,12 @@ if (!vs?.length) {
 }
 const VEH = vs[0].id
 
-// Importes conocidos y estado de arranque limpio, para poder correrla dos veces.
-await rest(duena, `vehiculo_monto?vehiculo_id=eq.${VEH}`, {
-  method: 'PATCH',
-  body: JSON.stringify({ monto_compania: 1000000, monto_franquicia: 200000, monto_particular: 300000 }),
-})
+// Importes conocidos y estado de arranque limpio, para poder correrla dos
+// veces. Desde la 0044 los importes van por su función: la API directa los
+// rechaza, y eso se comprueba más abajo.
+for (const [r, m] of [['compania', 1000000], ['franquicia', 200000], ['particular', 300000]]) {
+  await rpc(duena, 'taller_registrar_monto', { p_vehiculo: VEH, p_rubro: r, p_monto: m })
+}
 for (const r of ['compania', 'franquicia', 'particular']) {
   await rpc(duena, 'taller_registrar_facturacion', { p_vehiculo: VEH, p_rubro: r, p_estado: 'pendiente' })
 }
@@ -331,6 +332,157 @@ console.log('\n9. TOTALES DEL TABLERO')
         && totalesAFacturar(entUnidos).particular === 0)
   check('pero conservan sus importes para consultarlos',
         entUnidos.length === 0 || entUnidos.some(v => Number(v.monto_compania || 0) > 0))
+}
+
+// ── 10. Corregir el importe después del alta (0044) ───────────────
+// Forani da de alta rápido, muchas veces en cero, y completa cuando la
+// compañía aprueba. Lo que se fija acá: que se pueda, que quede escrito, y
+// que no haya forma de hacerlo sin que quede escrito.
+console.log('\n10. CORREGIR EL IMPORTE')
+{
+  const eventos = async (tipo = 'monto') =>
+    (await rest(duena,
+      `vehiculo_evento?vehiculo_id=eq.${VEH}&tipo=eq.${tipo}&select=*&order=created_at.desc`)).body || []
+
+  // ── Rubro pendiente: se cambia y punto ──
+  await rpc(duena, 'taller_registrar_facturacion',
+    { p_vehiculo: VEH, p_rubro: 'franquicia', p_estado: 'pendiente' })
+
+  const antesF = Number((await monto()).monto_franquicia)
+  const r1 = await rpc(duena, 'taller_registrar_monto',
+    { p_vehiculo: VEH, p_rubro: 'franquicia', p_monto: 777000 })
+  check('un rubro pendiente cambia de importe', r1.ok, JSON.stringify(r1.body))
+  check('y queda guardado', Number((await monto()).monto_franquicia) === 777000)
+
+  const ev1 = (await eventos())[0]
+  check('con el movimiento en la bitácora', !!ev1, JSON.stringify(ev1))
+  check('que dice el rubro', /franquicia/i.test(ev1?.texto || ''), ev1?.texto)
+  check('el importe anterior', ev1?.texto?.includes(String(antesF).replace(/\..*/, '')) || /\$/.test(ev1?.texto || ''),
+        ev1?.texto)
+  check('y el nuevo', /777\.000/.test(ev1?.texto || ''), ev1?.texto)
+  check('con autor', !!ev1?.autor_id)
+  check('y fecha', !!ev1?.created_at)
+
+  // Cambiar el estado no se arrastra con el importe.
+  const trasCambio = await monto()
+  check('el estado del rubro no se tocó', trasCambio.estado_franquicia === 'pendiente',
+        trasCambio.estado_franquicia)
+
+  // ── Rubro facturado: también se cambia, pero avisado ──
+  // La sección 8 dejó compañía facturada con número.
+  const antes = await monto()
+  check('compañía viene facturada de la sección 8', antes.estado_compania === 'facturado',
+        antes.estado_compania)
+
+  const r2 = await rpc(duena, 'taller_registrar_monto',
+    { p_vehiculo: VEH, p_rubro: 'compania', p_monto: 1555000 })
+  check('un rubro facturado también se puede corregir', r2.ok, JSON.stringify(r2.body))
+
+  const despues = await monto()
+  check('el importe nuevo quedó', Number(despues.monto_compania) === 1555000)
+  check('el estado sigue facturado', despues.estado_compania === 'facturado', despues.estado_compania)
+  check('y el número de factura intacto',
+        despues.factura_compania === antes.factura_compania,
+        `${antes.factura_compania} → ${despues.factura_compania}`)
+
+  const ev2 = (await eventos())[0]
+  check('la bitácora avisa que ya estaba facturado',
+        /facturado/i.test(ev2?.texto || ''), ev2?.texto)
+
+  // ── No se puede saltear la función ──
+  const pat = await rest(duena, `vehiculo_monto?vehiculo_id=eq.${VEH}`, {
+    method: 'PATCH', headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ monto_particular: 1 }),
+  })
+  check('el importe no se edita por API directa', !pat.ok, `status ${pat.status}`)
+  check('y no cambió', Number((await monto()).monto_particular) !== 1)
+
+  // Ni junto con otra columna que sí se puede escribir.
+  const mixto = await rest(duena, `vehiculo_monto?vehiculo_id=eq.${VEH}`, {
+    method: 'PATCH', body: JSON.stringify({ monto_particular: 2, updated_at: new Date().toISOString() }),
+  })
+  check('tampoco colado junto a otra columna', !mixto.ok, `status ${mixto.status}`)
+
+  // ── La carga inicial no sirve para esquivar la bitácora ──
+  const init = await rpc(duena, 'taller_montos_iniciales',
+    { p_vehiculo: VEH, p_compania: 9, p_franquicia: 9, p_particular: 9 })
+  check('taller_montos_iniciales no pisa un vehículo ya cargado', !init.ok,
+        JSON.stringify(init.body))
+
+  // ── Permisos ──
+  for (const [quien, u] of [['el operario', chapista], ['quien no ve montos', recepcion]]) {
+    const r = await rpc(u, 'taller_registrar_monto',
+      { p_vehiculo: VEH, p_rubro: 'particular', p_monto: 500 })
+    check(`${quien} no puede corregir importes`, !r.ok, JSON.stringify(r.body))
+  }
+  check('y el importe sigue igual', Number((await monto()).monto_particular) === 300000,
+        String((await monto()).monto_particular))
+
+  // ── Entradas inválidas ──
+  const neg = await rpc(duena, 'taller_registrar_monto',
+    { p_vehiculo: VEH, p_rubro: 'compania', p_monto: -5 })
+  check('rechaza un importe negativo', !neg.ok, JSON.stringify(neg.body))
+
+  const mal = await rpc(duena, 'taller_registrar_monto',
+    { p_vehiculo: VEH, p_rubro: 'inventado', p_monto: 100 })
+  check('rechaza un rubro que no existe', !mal.ok, JSON.stringify(mal.body))
+
+  // ── Guardar el mismo número no ensucia la bitácora ──
+  const cuantos = (await eventos()).length
+  const igual = await rpc(duena, 'taller_registrar_monto',
+    { p_vehiculo: VEH, p_rubro: 'compania', p_monto: 1555000 })
+  check('guardar el mismo importe no falla', igual.ok, JSON.stringify(igual.body))
+  check('pero no deja un movimiento nuevo', (await eventos()).length === cuantos)
+
+  // ── El camino del alta: cargar los tres de una, sobre una fila en cero ──
+  // Es lo que hace la pantalla de ingreso. No deja movimiento en la bitácora
+  // porque el evento de ingreso ya está, pero solo funciona una vez.
+  {
+    const alta = await rest(duena, 'vehiculo', {
+      method: 'POST', headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({
+        empresa_id: (await monto()).empresa_id,
+        patente: `ZZMONTO${Date.now() % 1000}`, vehiculo: 'AUTO DE PRUEBA MONTOS',
+        cliente_nombre: 'CLIENTE MONTOS', compania: 'Particular',
+        fecha_ingreso: new Date().toISOString().slice(0, 10),
+      }),
+    })
+    if (!alta.ok) { console.log('  (no se pudo crear el auto de prueba)') }
+    else {
+      const N = alta.body[0].id
+      const ini = await rpc(duena, 'taller_montos_iniciales',
+        { p_vehiculo: N, p_compania: 500000, p_franquicia: 0, p_particular: 0 })
+      check('el alta carga los tres importes de una', ini.ok, JSON.stringify(ini.body))
+
+      const { body: m } = await rest(duena, `vehiculo_monto?vehiculo_id=eq.${N}&select=*`)
+      check('y quedan guardados', Number(m?.[0]?.monto_compania) === 500000, JSON.stringify(m))
+
+      const { body: evs } = await rest(duena,
+        `vehiculo_evento?vehiculo_id=eq.${N}&tipo=eq.monto&select=id`)
+      check('sin ensuciar la bitácora con tres movimientos', (evs || []).length === 0)
+
+      const otra = await rpc(duena, 'taller_montos_iniciales',
+        { p_vehiculo: N, p_compania: 1, p_franquicia: 1, p_particular: 1 })
+      check('y no se puede volver a usar para esquivar el registro', !otra.ok,
+            JSON.stringify(otra.body))
+
+      const corr = await rpc(duena, 'taller_registrar_monto',
+        { p_vehiculo: N, p_rubro: 'compania', p_monto: 600000 })
+      check('después se corrige con la función que registra', corr.ok, JSON.stringify(corr.body))
+
+      const sinMontos = await rpc(chapista, 'taller_montos_iniciales',
+        { p_vehiculo: N, p_compania: 1, p_franquicia: 1, p_particular: 1 })
+      check('y sin taller.montos no se carga nada en el alta', !sinMontos.ok)
+    }
+  }
+
+  // ── El total del tablero se mueve con el importe ──
+  const { totalesAFacturar } = await import('../src/lib/taller.js')
+  const { body: veh } = await rest(duena, `vehiculo?id=eq.${VEH}&select=id,etapa`)
+  const solo = [{ ...veh[0], ...(await monto()) }]
+  check('el rubro pendiente corregido suma al tablero',
+        totalesAFacturar(solo).franquicia === 777000, JSON.stringify(totalesAFacturar(solo)))
+  check('y el facturado sigue sin sumar', totalesAFacturar(solo).compania === 0)
 }
 
 console.log(`\n${'='.repeat(52)}`)

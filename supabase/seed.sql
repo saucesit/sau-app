@@ -92,9 +92,13 @@ begin
       r.trabajo_hecho, r.panos, r.km
     ) returning id into v_id;
 
+    -- Los importes tienen guardia desde la 0044: solo se mueven con la bandera
+    -- puesta, igual que los tildes de cobro más abajo.
+    perform set_config('taller.flujo', 'on', true);
     update vehiculo_monto
        set monto_compania = r.m_cia, monto_franquicia = r.m_fra, monto_particular = r.m_par
      where vehiculo_id = v_id;
+    perform set_config('taller.flujo', '', true);
 
     if r.excepcion is not null then
       insert into vehiculo_evento (vehiculo_id, tipo, etapa, texto) values
@@ -144,14 +148,12 @@ begin
       2 + (random() * 4)::int, 40000 + (random() * 90000)::int
     ) returning id into v_id;
 
-    update vehiculo_monto
-       set monto_compania = r.m_cia, monto_franquicia = r.m_fra, monto_particular = r.m_par
-     where vehiculo_id = v_id;
-
-    -- Los tildes de cobro tienen guardia: solo se mueven con la bandera puesta.
+    -- Importes y tildes de cobro tienen guardia: solo se mueven con la
+    -- bandera puesta. Van juntos en una sola pasada.
     perform set_config('taller.flujo', 'on', true);
     update vehiculo_monto
-       set cobro_compania = r.c_cia, cobro_franquicia = r.c_fra, cobro_particular = r.c_par
+       set monto_compania = r.m_cia, monto_franquicia = r.m_fra, monto_particular = r.m_par,
+           cobro_compania = r.c_cia, cobro_franquicia = r.c_fra, cobro_particular = r.c_par
      where vehiculo_id = v_id;
     perform set_config('taller.flujo', '', true);
 

@@ -141,14 +141,17 @@ export default function Alta() {
 
     // La fila de montos la crea un trigger en cero, así existe aunque el
     // vehículo lo cargue un coordinador. Acá solo la completa quien puede.
+    //
+    // Va por RPC desde la 0044: los importes están blindados por la guardia y
+    // solo se mueven con una función que deje rastro. Esta es la de carga
+    // inicial y no escribe en la bitácora, porque el evento de ingreso ya está.
     if (verMontos) {
-      await supabase.from('vehiculo_monto')
-        .update({
-          monto_compania:   Number(f.monto_compania   || 0),
-          monto_franquicia: Number(f.monto_franquicia || 0),
-          monto_particular: Number(f.monto_particular || 0),
-        })
-        .eq('vehiculo_id', data.id)
+      await supabase.rpc('taller_montos_iniciales', {
+        p_vehiculo:   data.id,
+        p_compania:   Number(f.monto_compania   || 0),
+        p_franquicia: Number(f.monto_franquicia || 0),
+        p_particular: Number(f.monto_particular || 0),
+      })
     }
 
     await subirArchivos(data.id)

@@ -41,15 +41,13 @@ begin
       2 + (random() * 4)::int, 40000 + (random() * 90000)::int
     ) returning id into v_id;
 
-    -- Los montos los crea en cero el trigger de alta; acá se completan.
-    update vehiculo_monto
-       set monto_compania = r.m_cia, monto_franquicia = r.m_fra, monto_particular = r.m_par
-     where vehiculo_id = v_id;
-
-    -- Las validaciones de cobro solo se mueven con la bandera del flujo puesta.
+    -- Los montos los crea en cero el trigger de alta; acá se completan. Desde
+    -- la 0044 los importes también tienen guardia, así que van con la bandera
+    -- del flujo puesta, en la misma pasada que las validaciones de cobro.
     perform set_config('taller.flujo', 'on', true);
     update vehiculo_monto
-       set cobro_compania = r.c_cia, cobro_franquicia = r.c_fra, cobro_particular = r.c_par
+       set monto_compania = r.m_cia, monto_franquicia = r.m_fra, monto_particular = r.m_par,
+           cobro_compania = r.c_cia, cobro_franquicia = r.c_fra, cobro_particular = r.c_par
      where vehiculo_id = v_id;
     perform set_config('taller.flujo', '', true);
 
