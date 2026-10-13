@@ -74,6 +74,11 @@ begin
   -- Limpieza de corridas anteriores, para que la suite se pueda repetir
   delete from vehiculo where empresa_id = v_a and patente like 'ZZESP%';
 
+  -- La suite de facturación crea un vehículo por corrida para probar la carga
+  -- inicial de importes, y no puede borrarlo: taller.eliminar es de SAU. Se
+  -- limpian acá, así reseedear deja la empresa de prueba sin acumulación.
+  delete from vehiculo where empresa_id = v_a and patente like 'ZZMONTO%';
+
   -- Un vehículo de prueba en la empresa A, en chapa y sin trabajo marcado
   if not exists (select 1 from vehiculo where empresa_id = v_a and patente = 'ZZTEST01') then
     insert into vehiculo (empresa_id, patente, vehiculo, cliente_nombre, compania,
