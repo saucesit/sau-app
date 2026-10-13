@@ -10,12 +10,33 @@ import {
   DOCUMENTOS_FICHA, TIPO_ARCHIVO, tipoFoto,
 } from '../../lib/taller'
 
-function Panel({ legend, children }) {
+function Panel({ legend, accion, children }) {
   return (
     <section className="t-panel">
-      {legend && <p className="t-legend">{legend}</p>}
+      {legend && (
+        <div className="t-legend-fila">
+          <p className="t-legend">{legend}</p>
+          {accion}
+        </div>
+      )}
       {children}
     </section>
+  )
+}
+
+/** Un campo del expediente en modo edición. */
+function Campo({ k, campo, form, setForm, tipo = 'text', obligatorio, disabled, nota }) {
+  return (
+    <div className="t-kv editable">
+      <dt>{k}{obligatorio && ' *'}</dt>
+      <dd>
+        <input className="t-input" type={tipo}
+               value={form[campo] ?? ''}
+               disabled={disabled}
+               onChange={e => setForm(p => ({ ...p, [campo]: e.target.value }))} />
+        {nota && <span className="t-campo-nota">{nota}</span>}
+      </dd>
+    </div>
   )
 }
 
@@ -55,6 +76,9 @@ export default function Ficha() {
   const [facturas, setFacturas] = useState({})
   // Importe en edición, por rubro. Se rellena con lo guardado, igual que arriba.
   const [montos,   setMontos]   = useState({})
+  // Modo edición del expediente, y el formulario mientras dura.
+  const [editando, setEditando] = useState(false)
+  const [form,     setForm]     = useState({})
   const [subiendo, setSubiendo] = useState(null)
 
   const verMontos     = tienePermiso('taller.montos')
@@ -178,6 +202,94 @@ export default function Ficha() {
     await llamar('taller_registrar_monto', {
       p_vehiculo: id, p_rubro: rubro.id, p_monto: nuevo,
     })
+  }
+
+  /* ── Editar el expediente ────────────────────────────────────────
+   *
+   * El alta es rápida y acá se completa: la asesora carga tres autos que
+   * llegaron juntos y vuelve después con el siniestro, el perito y los paños.
+   *
+   * Los diez datos administrativos se guardan sin preguntar nada. Los tres que
+   * sí preguntan son los que mueven algo más que su propio casillero: la
+   * patente es la identidad del expediente, la fecha de ingreso decide la
+   * antigüedad y las alertas de demora, y mover una fecha pactada que ya
+   * existía es renegociar un plazo. Completar una vacía no pregunta: es
+   * exactamente lo que queremos que haga.
+   *
+   * Quién puede es taller.cargar, el mismo permiso que da de alta. El servidor
+   * registra cada cambio con su valor anterior (migración 0045).
+   */
+  const CAMPOS_EDITABLES = [
+    'patente', 'vehiculo', 'kilometraje', 'cliente_nombre', 'telefono',
+    'panos', 'dias_chapa', 'compania', 'productor', 'perito', 'nro_siniestro',
+    'fecha_ingreso', 'fecha_pactada',
+  ]
+
+  function abrirEdicion() {
+    setForm(Object.fromEntries(CAMPOS_EDITABLES.map(c => [c, v[c] ?? ''])))
+    setError(null)
+    setEditando(true)
+  }
+
+  async function guardarFicha() {
+    const limpio = (x) => (typeof x === 'string' ? x.trim() : x)
+    const obligatorios = {
+      patente: 'la patente', vehiculo: 'el vehículo', cliente_nombre: 'el cliente',
+      compania: 'la compañía', fecha_ingreso: 'la fecha de ingreso',
+    }
+    const faltan = Object.entries(obligatorios)
+      .filter(([c]) => !limpio(form[c]))
+      .map(([, label]) => label)
+    if (faltan.length) {
+      setError(`No puede quedar vacío: ${faltan.join(', ')}.`)
+      return
+    }
+
+    // Solo se manda lo que cambió: así la bitácora no registra un cambio por
+    // haber abierto el formulario, y los campos que no se tocan ni se rozan.
+    const cambios = {}
+    CAMPOS_EDITABLES.forEach(c => {
+      const antes  = v[c] ?? ''
+      const ahora  = limpio(form[c] ?? '')
+      const nulos  = ['kilometraje', 'panos', 'dias_chapa', 'telefono',
+                      'productor', 'perito', 'nro_siniestro', 'fecha_pactada']
+      if (String(antes) === String(ahora)) return
+      cambios[c] = ahora === '' && nulos.includes(c) ? null
+                 : ['kilometraje', 'panos', 'dias_chapa'].includes(c) ? Number(ahora)
+                 : ahora
+    })
+
+    if (Object.keys(cambios).length === 0) { setEditando(false); return }
+
+    if ('patente' in cambios && !window.confirm(
+      `Vas a cambiar la patente de ${patenteLegible(v.patente)} a ` +
+      `${patenteLegible(String(cambios.patente).replace(/[^A-Za-z0-9]/g, '').toUpperCase())}.\n\n` +
+      'Es con lo que se busca este vehículo en el taller. Las fotos y los ' +
+      'documentos ya cargados siguen en esta misma ficha.\n\n¿Lo guardo?'
+    )) return
+
+    if ('fecha_ingreso' in cambios && !window.confirm(
+      `Vas a cambiar la fecha de ingreso de ${fmtFecha(v.fecha_ingreso)} a ` +
+      `${fmtFecha(cambios.fecha_ingreso)}.\n\n` +
+      'Cambia cuántos días figura en taller, y con eso puede encenderse o ' +
+      'apagarse la alerta de demora.\n\n¿Lo guardo?'
+    )) return
+
+    // Completar una fecha pactada vacía no pregunta. Cambiar una ya pactada, sí.
+    if ('fecha_pactada' in cambios && v.fecha_pactada && !window.confirm(
+      `Este vehículo ya tenía fecha pactada: ${fmtFecha(v.fecha_pactada)}.\n\n` +
+      `La vas a cambiar a ${cambios.fecha_pactada ? fmtFecha(cambios.fecha_pactada) : 'sin fecha'}. ` +
+      'Es el plazo comprometido y mueve el contador de vehículos fuera de plazo.' +
+      '\n\n¿Lo guardo?'
+    )) return
+
+    setAccion(true)
+    setError(null)
+    const { error: err } = await supabase.from('vehiculo').update(cambios).eq('id', id)
+    if (err) setError(err.message.replace(/^.*?:\s*/, ''))
+    else setEditando(false)
+    await cargar()
+    setAccion(false)
   }
 
   const toggleExcepcion = (exId) =>
@@ -445,25 +557,72 @@ export default function Ficha() {
         </Panel>
       )}
 
-      <Panel legend="DATOS DEL CASO">
-        <dl>
-          <Dato k="Teléfono del cliente" v={v.telefono
-            ? <a className="t-tel" href={`tel:${v.telefono.replace(/[^\d+]/g, '')}`}>{v.telefono}</a>
-            : null} />
-          <Dato k="N° de siniestro" v={v.nro_siniestro} />
-          <Dato k="Productor"       v={v.productor} />
-          <Dato k="Perito"          v={v.perito} />
-          <Dato k="Kilometraje"     v={v.kilometraje ? `${Number(v.kilometraje).toLocaleString('es-AR')} km` : null} />
-          {/* Trabajo asignado al ingreso. No se recalcula con el tiempo ni
-              tiene que ver con la fecha pactada, que va más abajo. */}
-          <Dato k="Paños asignados" v={v.panos} />
-          <Dato k="Días de chapa"   v={v.dias_chapa} />
-          <Dato k="Ingreso"         v={fmtFecha(v.fecha_ingreso)} />
-          <Dato k="Fecha pactada"   v={fmtFecha(v.fecha_pactada)} />
-          <Dato k="En taller"       v={`${diasEnTaller(v)} días`} />
-          {v.fecha_entrega && <Dato k="Entregado" v={fmtFecha(v.fecha_entrega)} />}
-          {verMontos && <Dato k="Total a facturar" v={fmtMonto(total(v))} />}
-        </dl>
+      <Panel legend="DATOS DEL CASO"
+             accion={puedeCargar && !editando && (
+               <button className="t-btn fantasma chico" onClick={abrirEdicion} disabled={accion}>
+                 Editar
+               </button>
+             )}>
+        {!editando ? (
+          <dl>
+            <Dato k="Patente"        v={patenteLegible(v.patente)} />
+            <Dato k="Vehículo"       v={v.vehiculo} />
+            <Dato k="Cliente"        v={v.cliente_nombre} />
+            <Dato k="Teléfono del cliente" v={v.telefono
+              ? <a className="t-tel" href={`tel:${v.telefono.replace(/[^\d+]/g, '')}`}>{v.telefono}</a>
+              : null} />
+            <Dato k="Compañía"       v={v.compania} />
+            <Dato k="N° de siniestro" v={v.nro_siniestro} />
+            <Dato k="Productor"       v={v.productor} />
+            <Dato k="Perito"          v={v.perito} />
+            <Dato k="Kilometraje"     v={v.kilometraje ? `${Number(v.kilometraje).toLocaleString('es-AR')} km` : null} />
+            {/* Trabajo asignado al ingreso. No se recalcula con el tiempo ni
+                tiene que ver con la fecha pactada, que va más abajo. */}
+            <Dato k="Paños asignados" v={v.panos} />
+            <Dato k="Días de chapa"   v={v.dias_chapa} />
+            <Dato k="Ingreso"         v={fmtFecha(v.fecha_ingreso)} />
+            <Dato k="Fecha pactada"   v={fmtFecha(v.fecha_pactada)} />
+            <Dato k="En taller"       v={`${diasEnTaller(v)} días`} />
+            {v.fecha_entrega && <Dato k="Entregado" v={fmtFecha(v.fecha_entrega)} />}
+            {verMontos && <Dato k="Total a facturar" v={fmtMonto(total(v))} />}
+          </dl>
+        ) : (
+          <>
+            <p className="t-aviso" style={{ marginBottom: 12 }}>
+              Se guarda solo lo que cambies, y cada cambio queda en el reporte
+              diario con tu nombre.
+            </p>
+            <dl>
+              <Campo k="Patente"   campo="patente"        form={form} setForm={setForm} obligatorio />
+              <Campo k="Vehículo"  campo="vehiculo"       form={form} setForm={setForm} obligatorio />
+              <Campo k="Cliente"   campo="cliente_nombre" form={form} setForm={setForm} obligatorio />
+              <Campo k="Teléfono del cliente" campo="telefono" form={form} setForm={setForm} tipo="tel" />
+              <Campo k="Compañía"  campo="compania"       form={form} setForm={setForm} obligatorio />
+              <Campo k="N° de siniestro" campo="nro_siniestro" form={form} setForm={setForm} />
+              <Campo k="Productor" campo="productor"      form={form} setForm={setForm} />
+              <Campo k="Perito"    campo="perito"         form={form} setForm={setForm} />
+              <Campo k="Kilometraje" campo="kilometraje"  form={form} setForm={setForm} tipo="number" />
+              <Campo k="Paños asignados" campo="panos"    form={form} setForm={setForm} tipo="number" />
+              <Campo k="Días de chapa"   campo="dias_chapa" form={form} setForm={setForm} tipo="number" />
+              {/* En un entregado la fecha de ingreso queda quieta: reescribiría
+                  cuánto tardó un trabajo que ya está cerrado. */}
+              <Campo k="Ingreso" campo="fecha_ingreso" form={form} setForm={setForm}
+                     tipo="date" obligatorio disabled={entregado}
+                     nota={entregado ? 'No se modifica en un vehículo entregado.' : null} />
+              <Campo k="Fecha pactada" campo="fecha_pactada" form={form} setForm={setForm} tipo="date" />
+            </dl>
+
+            <div className="t-acciones" style={{ marginTop: 14 }}>
+              <button className="t-btn" onClick={guardarFicha} disabled={accion}>
+                {accion ? 'Guardando…' : 'Guardar cambios'}
+              </button>
+              <button className="t-btn fantasma" disabled={accion}
+                      onClick={() => { setEditando(false); setError(null) }}>
+                Cancelar
+              </button>
+            </div>
+          </>
+        )}
       </Panel>
 
       {(fotos.length > 0 || pdfs.length > 0 || subeFoto) && (

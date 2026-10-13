@@ -74,10 +74,15 @@ begin
   -- Limpieza de corridas anteriores, para que la suite se pueda repetir
   delete from vehiculo where empresa_id = v_a and patente like 'ZZESP%';
 
-  -- La suite de facturación crea un vehículo por corrida para probar la carga
-  -- inicial de importes, y no puede borrarlo: taller.eliminar es de SAU. Se
-  -- limpian acá, así reseedear deja la empresa de prueba sin acumulación.
-  delete from vehiculo where empresa_id = v_a and patente like 'ZZMONTO%';
+  -- Las suites crean vehículos descartables por corrida y no pueden borrarlos:
+  -- taller.eliminar es de SAU, justamente porque borrar se lleva el historial.
+  -- Se limpian acá, así reseedear deja la empresa de prueba sin acumulación.
+  --   ZZMONTO%  pruebas-facturacion (carga inicial de importes)
+  --   ZZED%     pruebas-edicion-ficha (expediente editable)
+  --   ZZOTRA%   pruebas-edicion-ficha (choque de patentes)
+  delete from vehiculo
+   where empresa_id = v_a
+     and (patente like 'ZZMONTO%' or patente like 'ZZED%' or patente like 'ZZOTRA%');
 
   -- Un vehículo de prueba en la empresa A, en chapa y sin trabajo marcado
   if not exists (select 1 from vehiculo where empresa_id = v_a and patente = 'ZZTEST01') then

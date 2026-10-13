@@ -296,6 +296,19 @@
 .t-doc { display: flex; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--t-rule-2); font-size: 13px; color: var(--t-ink); font-weight: 500; }
 .t-doc-m { font-family: var(--t-mono); font-size: 10px; color: var(--t-ink-3); letter-spacing: 0.04em; font-weight: 400; margin-top: 2px; }
 
+/* Encabezado de panel con una acción a la derecha (el "Editar" del expediente) */
+.t-legend-fila { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.t-btn.chico { padding: 4px 10px; font-size: 11px; }
+
+/* Expediente en modo edición: la misma grilla de la ficha, con campos. */
+.t-kv.editable { align-items: center; }
+.t-kv.editable dd { width: 100%; }
+.t-kv.editable .t-input { width: 100%; }
+.t-campo-nota {
+  display: block; font-family: var(--t-mono); font-size: 10px;
+  color: var(--t-ink-3); margin-top: 3px; letter-spacing: 0.04em;
+}
+
 .t-fila { display: flex; gap: 8px; }
 .t-fila .t-input { flex: 1; }
 .t-tel { color: var(--t-ink); text-decoration: underline; text-underline-offset: 2px; }
