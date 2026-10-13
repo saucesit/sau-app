@@ -2,7 +2,10 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
-import { patenteLegible, fmtFecha, fmtMonto, total, aFecha, facturacionCompleta } from '../../lib/taller'
+import {
+  patenteLegible, fmtFecha, fmtMonto, total, aFecha, facturacionCompleta,
+  limpiarBusqueda, normalizarPatente,
+} from '../../lib/taller'
 
 /**
  * Archivo de vehículos entregados.
@@ -21,11 +24,6 @@ import { patenteLegible, fmtFecha, fmtMonto, total, aFecha, facturacionCompleta 
  */
 
 const PAGINA = 40
-
-/** PostgREST separa los filtros de `or` por coma: hay que sacarlas del término. */
-function limpiar(t) {
-  return t.replace(/[,()*\\]/g, ' ').trim()
-}
 
 function Fila({ v, verMontos, onAbrir }) {
   return (
@@ -67,11 +65,12 @@ export default function Entregados() {
       .eq('empresa_id', empresaActivaId)
       .eq('etapa', 'entregado')
 
-    const t = limpiar(termino)
+    // Misma regla que la pizarra: limpiarBusqueda y normalizarPatente viven en
+    // lib/taller.js y las usan las dos pantallas. Acá se arma el `or` del
+    // servidor; allá se filtra en memoria con coincide(), que es su espejo.
+    const t = limpiarBusqueda(termino)
     if (t) {
-      // La patente se guarda normalizada (sin espacios, en mayúscula), así que
-      // "af 350 pm" tiene que buscarse como AF350PM.
-      const plano = t.replace(/[\s-]/g, '').toUpperCase()
+      const plano = normalizarPatente(t)
       q = q.or(
         `patente.ilike.%${plano}%,` +
         `nro_siniestro.ilike.%${plano}%,` +

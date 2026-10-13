@@ -107,6 +107,23 @@
 .t-h2 { font-family: var(--t-cond); font-size: 17px; font-weight: 700; letter-spacing: 0.01em; }
 .t-hint { font-family: var(--t-mono); font-size: 10px; color: var(--t-ink-3); letter-spacing: 0.06em; }
 
+/* Buscador de la pizarra. Comparte .t-buscador con el archivo de entregados;
+   lo que agrega es la línea de conteo, que aclara que el filtro afecta a las
+   tarjetas y no a los contadores de arriba. */
+.t-buscar { margin-bottom: 10px; }
+.t-buscar .t-buscador { margin-top: 0; }
+.t-buscar-c {
+  font-family: var(--t-mono); font-size: 10px; color: var(--t-ink-3);
+  letter-spacing: 0.06em; margin-top: 6px;
+}
+
+/* Lista plana de resultados: solo en celular, mientras haya búsqueda. */
+.t-resultados { display: flex; flex-direction: column; gap: 8px; }
+.t-card-etapa {
+  font-family: var(--t-mono); font-size: 9px; letter-spacing: 0.1em;
+  color: var(--t-ink-3); margin-bottom: 4px;
+}
+
 /* Sin align-items: las seis columnas comparten alto y se lee como pizarra,
    no como seis listas de largo distinto. */
 .t-board { display: grid; grid-template-columns: repeat(6, minmax(172px, 1fr)); gap: 10px; }

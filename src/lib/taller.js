@@ -76,6 +76,53 @@ export const TIPO_ARCHIVO = {
   factura:        'Factura',
 }
 
+/* ── Búsqueda ─────────────────────────────────────────────────────
+ *
+ * Una sola regla para las dos pantallas. El archivo de entregados busca contra
+ * el servidor —son cientos de autos y crece para siempre— y la pizarra filtra
+ * en memoria, porque ya tiene todos los activos cargados. Dos mecanismos, pero
+ * el mismo resultado: escribir lo mismo tiene que encontrar lo mismo en las dos.
+ */
+
+/** Los campos sobre los que se busca. Compañía queda afuera a propósito. */
+export const CAMPOS_BUSQUEDA = ['patente', 'nro_siniestro', 'cliente_nombre', 'vehiculo']
+
+/**
+ * PostgREST separa los filtros de un `or` por coma, así que una coma en el
+ * término rompe la consulta entera. Se saca acá para que la pizarra y el
+ * archivo descarten exactamente los mismos caracteres.
+ */
+export function limpiarBusqueda(t) {
+  return (t || '').replace(/[,()*\\]/g, ' ').trim()
+}
+
+/** La patente se guarda sin espacios y en mayúscula: "ab 222 cc" → "AB222CC". */
+export function normalizarPatente(t) {
+  return (t || '').replace(/[\s-]/g, '').toUpperCase()
+}
+
+/**
+ * ¿Este vehículo coincide con lo que se escribió?
+ *
+ * Patente y siniestro se comparan normalizados; cliente y vehículo, como texto
+ * suelto. Es el equivalente en memoria del `or` que arma Entregados: si uno
+ * cambia, hay que cambiar el otro, y para eso está pruebas-busqueda.mjs.
+ *
+ * Un término vacío coincide con todo: sin búsqueda, la pizarra está entera.
+ */
+export function coincide(v, termino) {
+  const t = limpiarBusqueda(termino)
+  if (!t) return true
+  const plano  = normalizarPatente(t)
+  const suelto = t.toLowerCase()
+  return (
+    (v?.patente        || '').toUpperCase().includes(plano)  ||
+    (v?.nro_siniestro  || '').toUpperCase().includes(plano)  ||
+    (v?.cliente_nombre || '').toLowerCase().includes(suelto) ||
+    (v?.vehiculo       || '').toLowerCase().includes(suelto)
+  )
+}
+
 export const EXCEPCIONES = [
   { id: 'mecanica',   label: 'Mecánica',   color: 'text-sky-400 bg-sky-500/15'     },
   { id: 'detenido',   label: 'Detenido',   color: 'text-red-400 bg-red-500/15'     },

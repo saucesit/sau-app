@@ -5,23 +5,30 @@ import { useAuth } from '../../context/AuthContext'
 import {
   ETAPAS_ACTIVAS, etapaLabel, excepcionCfg,
   diasEnTaller, estado, proximaAccion, patenteLegible, pendiente, fmtMonto, aFecha,
-  RUBROS, totalesAFacturar, pendienteFacturar,
+  RUBROS, totalesAFacturar, pendienteFacturar, coincide,
 } from '../../lib/taller'
 import { useCelular } from '../../lib/useCelular'
 
-/** Las seis etapas siempre visibles, aunque estén vacías: es una pizarra, no una lista. */
-function Columna({ etapa, autos, sel, onElegir, onAbrir }) {
+/**
+ * Las seis etapas siempre visibles, aunque estén vacías: es una pizarra, no una
+ * lista. Con búsqueda activa tampoco desaparecen; lo que cambia es el contador,
+ * que pasa a decir "01 DE 03" para que se entienda que está filtrada y no vacía.
+ */
+function Columna({ etapa, autos, total, filtrando, sel, onElegir, onAbrir }) {
+  const dos = (n) => String(n).padStart(2, '0')
   return (
     <section className="t-col">
       <header className="t-col-head">
         <div className="t-col-n">{etapa.label}</div>
         <div className="t-col-c">
-          {String(autos.length).padStart(2, '0')} {autos.length === 1 ? 'VEHÍCULO' : 'VEHÍCULOS'}
+          {filtrando
+            ? `${dos(autos.length)} DE ${dos(total)}`
+            : `${dos(total)} ${total === 1 ? 'VEHÍCULO' : 'VEHÍCULOS'}`}
         </div>
       </header>
       <div className="t-col-body">
         {autos.length === 0
-          ? <p className="t-vacia">SIN VEHÍCULOS</p>
+          ? <p className="t-vacia">{filtrando ? 'SIN COINCIDENCIAS' : 'SIN VEHÍCULOS'}</p>
           : autos.map(v => (
               <Tarjeta key={v.id} v={v} activa={sel === v.id}
                        onElegir={onElegir} onAbrir={onAbrir} />
@@ -32,18 +39,55 @@ function Columna({ etapa, autos, sel, onElegir, onAbrir }) {
 }
 
 /**
+ * El campo de búsqueda. Filtra las tarjetas de la pizarra y nada más: los
+ * contadores de arriba, los totales a facturar y la cola de decisiones siguen
+ * describiendo el taller completo. Si una búsqueda bajara el KPI a "01 ACTIVO",
+ * el tablero estaría mintiendo sobre el estado del negocio.
+ */
+function Buscador({ valor, onCambiar, encontrados, totalAutos }) {
+  return (
+    <div className="t-buscar">
+      <div className="t-buscador">
+        <input
+          className="t-input"
+          value={valor}
+          onChange={e => onCambiar(e.target.value)}
+          placeholder="Buscar por patente, cliente, vehículo o N° de siniestro"
+          autoComplete="off"
+          inputMode="search"
+          aria-label="Buscar un vehículo en el taller"
+        />
+        {valor && (
+          <button className="t-btn fantasma" onClick={() => onCambiar('')}>Limpiar</button>
+        )}
+      </div>
+      {valor.trim() && (
+        <p className="t-buscar-c">
+          {encontrados === 0
+            ? `Ningún vehículo activo coincide con "${valor.trim()}".`
+            : `${encontrados} de ${totalAutos} vehículos`}
+        </p>
+      )}
+    </div>
+  )
+}
+
+/**
  * En escritorio un clic selecciona (llena el panel de la derecha, que es como
  * se barre la pizarra sin perder el contexto) y el doble clic abre la ficha.
  * En celular el panel queda apilado abajo, fuera de la vista: ahí seleccionar
  * no sirve para nada y el toque abre la ficha directo.
  */
-function Tarjeta({ v, activa, onElegir, onAbrir }) {
+function Tarjeta({ v, activa, conEtapa, onElegir, onAbrir }) {
   const e   = estado(v)
   const exc = excepcionCfg(v.excepcion)
   return (
     <button className={`t-card s-${e.s}`} aria-pressed={activa}
             onClick={() => onElegir(v.id)}
             onDoubleClick={() => onAbrir(v.id)}>
+      {/* Fuera de la pizarra la tarjeta pierde su columna, así que la etapa
+          tiene que decirla ella misma. */}
+      {conEtapa && <div className="t-card-etapa">{etapaLabel(v.etapa).toUpperCase()}</div>}
       <div className="t-plate">{patenteLegible(v.patente)}</div>
       <div className="t-who">{v.vehiculo} · {v.cliente_nombre}</div>
       <div className="t-meta">
@@ -63,6 +107,7 @@ export default function Tablero() {
   const [vehiculos, setVehiculos] = useState([])
   const [cargando,  setCargando]  = useState(true)
   const [sel,       setSel]       = useState(null)
+  const [busqueda,  setBusqueda]  = useState('')
   // Se calcula una sola vez al montar: leer el reloj en cada render es impuro.
   const [hoy] = useState(() =>
     new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }))
@@ -115,11 +160,23 @@ export default function Tablero() {
 
   useEffect(() => { cargar() }, [empresaActivaId])
 
-  const porEtapa = useMemo(() => {
+  // Filtra en memoria: la pizarra ya tiene todos los activos cargados, así que
+  // buscar no necesita ni consulta ni espera. La regla la comparte con el
+  // archivo de entregados (coincide, en lib/taller.js).
+  const filtrando = busqueda.trim().length > 0
+  const visibles  = useMemo(
+    () => (filtrando ? vehiculos.filter(v => coincide(v, busqueda)) : vehiculos),
+    [vehiculos, busqueda, filtrando])
+
+  const agrupar = (lista) => {
     const m = Object.fromEntries(ETAPAS_ACTIVAS.map(e => [e.id, []]))
-    vehiculos.forEach(v => { if (m[v.etapa]) m[v.etapa].push(v) })
+    lista.forEach(v => { if (m[v.etapa]) m[v.etapa].push(v) })
     return m
-  }, [vehiculos])
+  }
+  // Dos agrupaciones: lo que se muestra y el total de cada etapa, que es lo que
+  // hace posible el "01 DE 03" del encabezado.
+  const porEtapa      = useMemo(() => agrupar(visibles),  [visibles])
+  const porEtapaTotal = useMemo(() => agrupar(vehiculos), [vehiculos])
 
   const cola = useMemo(() =>
     vehiculos
@@ -164,6 +221,14 @@ export default function Tablero() {
           )}
         </div>
 
+        {/* En celular va arriba de todo: si quedara debajo de los contadores
+            habría que scrollear para buscar, que es justo lo que se quiere
+            evitar. En escritorio entra junto al título de la pizarra. */}
+        {esCelular && (
+          <Buscador valor={busqueda} onCambiar={setBusqueda}
+                    encontrados={visibles.length} totalAutos={vehiculos.length} />
+        )}
+
         <div className="t-kpis">
           <div className="t-kpi">
             <div className="t-kpi-n">{String(vehiculos.length).padStart(2, '0')}</div>
@@ -194,16 +259,44 @@ export default function Tablero() {
         )}
 
         <div className="t-board-head">
-          <h2 className="t-h2">Flujo de producción</h2>
+          <h2 className="t-h2">{esCelular && filtrando ? 'Resultados' : 'Flujo de producción'}</h2>
           <p className="t-hint">UN CLIC MUESTRA LA PRÓXIMA ACCIÓN · DOBLE CLIC ABRE LA FICHA</p>
         </div>
 
-        <div className="t-board">
-          {ETAPAS_ACTIVAS.map(e => (
-            <Columna key={e.id} etapa={e} autos={porEtapa[e.id]} sel={sel}
-                     onElegir={elegir} onAbrir={abrirFicha} />
-          ))}
-        </div>
+        {!esCelular && (
+          <Buscador valor={busqueda} onCambiar={setBusqueda}
+                    encontrados={visibles.length} totalAutos={vehiculos.length} />
+        )}
+
+        {/* En celular la pizarra es un scroll horizontal de columnas angostas:
+            con un filtro activo, el auto encontrado puede quedar tres columnas
+            a la derecha y la pantalla mostrar "SIN COINCIDENCIAS". Mientras haya
+            búsqueda se cambia por una lista plana, y cada tarjeta dice su etapa.
+            Al limpiar vuelve la pizarra sola. */}
+        {esCelular && filtrando ? (
+          visibles.length === 0 ? (
+            <p className="t-aviso" style={{ marginTop: 14 }}>
+              Ningún vehículo activo coincide. Probá con parte de la patente, o
+              buscá en los entregados si el auto ya salió del taller.
+            </p>
+          ) : (
+            <div className="t-resultados">
+              {visibles.map(v => (
+                <Tarjeta key={v.id} v={v} activa={sel === v.id} conEtapa
+                         onElegir={elegir} onAbrir={abrirFicha} />
+              ))}
+            </div>
+          )
+        ) : (
+          <div className="t-board">
+            {ETAPAS_ACTIVAS.map(e => (
+              <Columna key={e.id} etapa={e}
+                       autos={porEtapa[e.id]} total={porEtapaTotal[e.id].length}
+                       filtrando={filtrando} sel={sel}
+                       onElegir={elegir} onAbrir={abrirFicha} />
+            ))}
+          </div>
+        )}
       </main>
 
       <aside className="t-side">
