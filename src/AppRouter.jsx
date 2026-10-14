@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Layout from './components/Layout'
 import Login from './pages/Login'
@@ -33,6 +33,7 @@ import ReservaPublica from './pages/ReservaPublica'
 import PlantillasAdmin from './pages/PlantillasAdmin'
 import PresupuestoEditar from './pages/PresupuestoEditar'
 import { temaTaller, TEMA_CONTROL_BOARD } from './lib/temaTaller'
+import { moduloDeRuta } from './lib/inicio'
 
 // La pizarra de control tiene su propio armazón e identidad visual, y se carga
 // aparte: los clientes que no la usan no descargan ni su código ni su CSS.
@@ -128,6 +129,31 @@ function Protegido({ children }) {
 }
 
 /**
+ * Cierra las pantallas de los módulos que la empresa no tiene activos.
+ *
+ * Es NAVEGACIÓN, no autorización: lo que alguien puede hacer lo siguen
+ * decidiendo sus permisos y las policies, que no se tocan. Esto solo evita que
+ * un usuario de taller que escribe /stock termine en una pantalla vacía que no
+ * le corresponde — y lo devuelve a su propio inicio, no al Inicio general.
+ */
+/** Manda a cada uno a su propia pantalla de entrada. */
+function AlInicio() {
+  const { user, rutaInicio } = useAuth()
+  return <Navigate to={user ? rutaInicio : '/login'} replace />
+}
+
+function SoloModulosActivos() {
+  const { tieneModulo, rutaInicio } = useAuth()
+  const location = useLocation()
+  const modulo = moduloDeRuta(location.pathname)
+
+  if (modulo && !tieneModulo(modulo)) {
+    return <Navigate to={rutaInicio} replace />
+  }
+  return <Outlet />
+}
+
+/**
  * Las rutas viven en un componente propio porque el árbol depende de la empresa:
  * el taller de Forani corre con la pizarra de control y su armazón aparte, y
  * cualquier otro taller sigue con la interfaz clásica adentro del Layout de SAU.
@@ -152,10 +178,11 @@ function Rutas() {
           <Route
             element={
               <Protegido>
-                <Layout />
+                <SoloModulosActivos />
               </Protegido>
             }
           >
+          <Route element={<Layout />}>
             <Route path="/" element={<DashboardOOnboarding />} />
             <Route path="/vender" element={<VentaNueva />} />
             <Route path="/caja" element={<Caja />} />
@@ -184,6 +211,7 @@ function Rutas() {
               </>
             )}
           </Route>
+          </Route>
 
           {/* Pizarra de control: fuera del Layout, con su propio armazón y ancho completo */}
           {pizarra && (
@@ -207,7 +235,8 @@ function Rutas() {
           <Route path="/sau-admin" element={<ProtegidoAdmin><AdminSAU /></ProtegidoAdmin>} />
           <Route path="/contadora-admin" element={<ProtegidoContadora><AdminContadora /></ProtegidoContadora>} />
 
-          <Route path="*" element={<Navigate to="/" replace />} />
+          {/* Una ruta que no existe lleva al inicio de cada uno, no al general */}
+          <Route path="*" element={<AlInicio />} />
         </Routes>
       </BrowserRouter>
   )

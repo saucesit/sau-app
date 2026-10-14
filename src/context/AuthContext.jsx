@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { MODULOS_DEFAULT } from '../lib/modulos'
+import { rutaDeInicio } from '../lib/inicio'
 
 const AuthContext = createContext(null)
 
@@ -48,8 +49,19 @@ export function AuthProvider({ children }) {
         .eq('activa', true)
       if (cancelado) return
       setProfile(prof || null)
-      setMembresias(mems || [])
-      setEmpresaActivaId((prev) => prev || mems?.[0]?.empresa_id || null)
+      // Orden estable: sin esto "la primera empresa" dependía del orden en que
+      // Postgres devolviera las filas, que puede cambiar solo. Se ordena por
+      // antigüedad de la empresa y se desempata por id.
+      //
+      // Hoy no hay ningún usuario en más de una empresa, así que esto no elige
+      // nada por nadie: solo deja de ser azaroso. Cuando aparezca el primero,
+      // la respuesta de verdad es un selector de empresa, no un criterio mejor.
+      const ordenadas = [...(mems || [])].sort((a, b) => {
+        const fa = a.empresa?.creado_en || '', fb = b.empresa?.creado_en || ''
+        return fa !== fb ? (fa < fb ? -1 : 1) : (a.empresa_id < b.empresa_id ? -1 : 1)
+      })
+      setMembresias(ordenadas)
+      setEmpresaActivaId((prev) => prev || ordenadas[0]?.empresa_id || null)
       setPerfilCargado(true)
     })()
     return () => { cancelado = true }
@@ -96,6 +108,10 @@ export function AuthProvider({ children }) {
     [modulosActivos],
   )
 
+  // A dónde entra este usuario después del login, y a dónde vuelve si abre una
+  // ruta de un módulo que su empresa no tiene. Es navegación: no concede nada.
+  const rutaInicio = rutaDeInicio(empresaActiva, tienePermiso)
+
   // Recarga los datos de la empresa activa (usado después del onboarding)
   const recargarEmpresa = useCallback(async () => {
     if (!session?.user) return
@@ -122,6 +138,7 @@ export function AuthProvider({ children }) {
     tienePermiso,
     modulosActivos,
     tieneModulo,
+    rutaInicio,
     loading,
     perfilCargado,
     signIn,

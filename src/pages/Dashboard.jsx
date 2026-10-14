@@ -120,6 +120,9 @@ const MODULO_CARD = {
   stock:        { to: '/stock',        icon: '📦', titulo: 'Stock',        desc: 'Inventario y precios' },
   compras:      { to: '/compras',      icon: '🛍️', titulo: 'Compras',     desc: 'Compras y gastos' },
   equipo:       { to: '/equipo',       icon: '👥', titulo: 'Equipo',       desc: 'Empleados y permisos' },
+  // Sin esta línea, una empresa con el taller como único módulo veía
+  // "Todavía no hay módulos activos" en su propia pantalla de inicio.
+  taller:       { to: '/taller',       icon: '🔧', titulo: 'Taller',       desc: 'Vehículos, etapas y entregas' },
 }
 
 function HomeModulos({ empresa, modulos }) {

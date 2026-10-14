@@ -18,14 +18,20 @@ function ConfigBanner() {
 }
 
 export default function Login() {
-  const { isSupabaseConfigured, signIn, user } = useAuth()
+  const { isSupabaseConfigured, signIn, user, perfilCargado, rutaInicio } = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
 
-  // Cuando la sesión se activa (login exitoso), redirigir al inicio
+  /**
+   * Con la sesión activa, al módulo que corresponda.
+   *
+   * Se espera a `perfilCargado` porque el destino depende de la empresa: sin
+   * sus módulos, `rutaInicio` todavía diría `/` y el taller vería el Inicio
+   * general por un instante antes de saltar.
+   */
   useEffect(() => {
-    if (user) navigate('/', { replace: true })
-  }, [user, navigate])
+    if (user && perfilCargado) navigate(rutaInicio, { replace: true })
+  }, [user, perfilCargado, rutaInicio, navigate])
   const [password, setPassword] = useState('')
   const [error, setError] = useState(null)
   const [cargando, setCargando] = useState(false)
