@@ -158,6 +158,16 @@ export function etapaSiguiente(id) {
 }
 
 /**
+ * La etapa anterior, o null si ya es la primera. Es a dónde vuelve un vehículo
+ * al retroceder: la cadena es la misma para los dos lados, y quien lo hace
+ * cumplir es taller_retroceder_etapa en la base (migración 0048).
+ */
+export function etapaPrevia(id) {
+  const i = ETAPAS.findIndex(e => e.id === id)
+  return i > 0 ? ETAPAS[i - 1].id : null
+}
+
+/**
  * Las columnas `date` de Postgres llegan como '2026-09-22', y `new Date()` las
  * interpreta como medianoche UTC: en Argentina eso cae el día anterior a las
  * 21:00, y el taller veía todas las fechas y los plazos corridos un día.

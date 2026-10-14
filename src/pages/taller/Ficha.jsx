@@ -7,7 +7,7 @@ import {
   diasEnTaller, diasEnEtapa, estado, proximaAccion, patenteLegible,
   pendiente, total, fmtMonto, fmtFecha,
   RUBROS, ESTADOS_FACTURACION, estadoFacturacion,
-  DOCUMENTOS_FICHA, TIPO_ARCHIVO, tipoFoto,
+  DOCUMENTOS_FICHA, TIPO_ARCHIVO, tipoFoto, etapaPrevia,
 } from '../../lib/taller'
 
 function Panel({ legend, accion, children }) {
@@ -92,6 +92,9 @@ export default function Ficha() {
   // los que llevan importes siguen pidiendo taller.montos (migración 0047).
   const puedeDocs     = tienePermiso('taller.documentos')
   const puedeAnular   = tienePermiso('taller.anular')
+  // Reabrir un entregado devuelve un trabajo cerrado a la pizarra y sus
+  // importes pendientes a los totales: va con empresa.admin, no con validar.
+  const puedeAdministrar = tienePermiso('empresa.admin')
   // El permiso solo no alcanza: hay que tener cargadas las etapas del oficio.
   // Quien no las tiene veía el botón y recién al tocarlo le saltaba el error.
   const sinEtapas     = puedeTrabajar && tallerEtapas.length === 0
@@ -295,6 +298,38 @@ export default function Ficha() {
     setAccion(false)
   }
 
+  /**
+   * Volver una etapa atrás. Pasa por dos motivos y los dos son reales: se
+   * apretó avanzar de más, o hay que rehacer un trabajo ya dado por terminado.
+   *
+   * El motivo es obligatorio porque el servidor lo exige, y porque alguien va a
+   * querer saber el mes que viene por qué este auto volvió de Pintura.
+   */
+  async function retroceder() {
+    const destino = etapaLabel(etapaAnterior)
+    const motivo = window.prompt(
+      `Volver ${patenteLegible(v.patente)} de ${etapaLabel(v.etapa)} a ${destino}.\n\n` +
+      '¿Por qué vuelve? Queda en el reporte diario con tu nombre.\n' +
+      'El avance anterior no se borra: queda el ida y el vuelta.'
+    )
+    if (motivo === null) return
+    if (!motivo.trim()) { setError('Hace falta un motivo para volver de etapa.'); return }
+    await llamar('taller_retroceder_etapa', { p_vehiculo: id, p_motivo: motivo.trim() })
+  }
+
+  /** Sacar un entregado del archivo y devolverlo al taller. */
+  async function reabrir() {
+    const motivo = window.prompt(
+      `Reabrir ${patenteLegible(v.patente)}, entregado el ${fmtFecha(v.fecha_entrega)}.\n\n` +
+      'Vuelve a la pizarra en Control de Calidad y se le borra la fecha de entrega. ' +
+      'La facturación, los cobros y los adjuntos quedan como están.\n\n' +
+      '¿Por qué vuelve al taller?'
+    )
+    if (motivo === null) return
+    if (!motivo.trim()) { setError('Hace falta un motivo para reabrir el vehículo.'); return }
+    await llamar('taller_reabrir_vehiculo', { p_vehiculo: id, p_motivo: motivo.trim() })
+  }
+
   const toggleExcepcion = (exId) =>
     llamar('taller_cambiar_excepcion', { p_vehiculo: id, p_excepcion: v.excepcion === exId ? null : exId })
 
@@ -382,6 +417,9 @@ export default function Ficha() {
   const pdfs      = archivos.filter(x => !x.tipo.startsWith('foto'))
   // Qué clase de foto corresponde acá: de ingreso, del proceso o de la entrega.
   const tFoto     = tipoFoto(v.etapa)
+  // La etapa de la que viene, para poder volver. null en Recepción y en un
+  // entregado, que se reabre en vez de retroceder.
+  const etapaAnterior = entregado ? null : etapaPrevia(v.etapa)
   // Quien solo tiene taller.fotos sube la foto del trabajo y nada más: ni
   // documentos, ni la foto de recepción, ni la de la entrega. Mostrarle un
   // botón que la base va a rechazar sería peor que no mostrarlo.
@@ -438,6 +476,32 @@ export default function Ficha() {
                 Validar y avanzar
               </button>
             )}
+            {/* Volver atrás: por un clic de más, o porque hay que rehacer un
+                trabajo. Una etapa por vez, nunca desde Recepción. */}
+            {puedeValidar && etapaAnterior && (
+              <button className="t-btn fantasma" onClick={retroceder} disabled={accion}>
+                Volver a {etapaLabel(etapaAnterior)}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Reabrir es otra cosa que retroceder: saca el auto del archivo, le
+          borra la fecha de entrega y devuelve sus importes pendientes al
+          tablero. Por eso lo hace quien administra el taller. */}
+      {entregado && puedeAdministrar && (
+        <div className="t-accion" style={{ marginTop: 16 }}>
+          <div className="t-accion-l">ENTREGADO EL {fmtFecha(v.fecha_entrega)}</div>
+          <div className="t-accion-t">Reabrir vehículo</div>
+          <div className="t-accion-d">
+            Vuelve al taller en Control de Calidad y sale del archivo. La
+            facturación, los cobros y los adjuntos quedan como están.
+          </div>
+          <div className="t-acciones">
+            <button className="t-btn fantasma" onClick={reabrir} disabled={accion}>
+              Reabrir vehículo
+            </button>
           </div>
         </div>
       )}
