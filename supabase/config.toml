@@ -416,3 +416,10 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 # tiene que ser pública. Queda acá para que no se pierda en el próximo deploy.
 [functions.aceptar-invitacion]
 verify_jwt = false
+
+# La capa de lectura de integraciones no atiende usuarios de SAU: atiende
+# integraciones con su propia credencial, que no es un JWT de Supabase. Toda la
+# autorización la resuelve la función adentro. Queda acá para que no se pierda
+# en el próximo deploy.
+[functions.reporte-taller]
+verify_jwt = false
