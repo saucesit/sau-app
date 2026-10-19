@@ -7,7 +7,7 @@ import {
   diasEnTaller, diasEnEtapa, estado, proximaAccion, patenteLegible,
   pendiente, total, fmtMonto, fmtFecha,
   RUBROS, ESTADOS_FACTURACION, estadoFacturacion,
-  DOCUMENTOS_FICHA, TIPO_ARCHIVO, tipoFoto, etapaPrevia,
+  DOCUMENTOS_FICHA, TIPO_ARCHIVO, tipoFoto, etapaPrevia, motivoCarga,
 } from '../../lib/taller'
 
 function Panel({ legend, accion, children }) {
@@ -80,6 +80,10 @@ export default function Ficha() {
   const [editando, setEditando] = useState(false)
   const [form,     setForm]     = useState({})
   const [subiendo, setSubiendo] = useState(null)
+  // Resultado de la última tanda de adjuntos: cuántos entraron y cuáles no.
+  // Se muestra al lado de los botones de carga, que es donde está mirando
+  // quien acaba de elegir cinco archivos.
+  const [carga,    setCarga]    = useState(null)
 
   const verMontos     = tienePermiso('taller.montos')
   const puedeValidar  = tienePermiso('taller.validar')
@@ -358,15 +362,24 @@ export default function Ficha() {
    * vehiculo_archivo: no toca el vehículo, así que no lo hace avanzar ni —si ya
    * está entregado— lo reactiva.
    *
-   * Acepta varios de una: las fotos se sacan de a tandas y subirlas una por
-   * una desde el celular es insufrible. Si una falla, corta ahí y avisa; las
-   * que ya subieron quedan, que es lo que se espera.
+   * Acepta varios de una: las fotos se sacan de a tandas y las facturas llegan
+   * en lotes. Un archivo que falla NO corta la tanda —los que vienen detrás no
+   * tienen nada que ver con él— y al final se dice exactamente cuántos
+   * entraron y cuáles no, con nombre y motivo.
+   *
+   * Lo que subió, queda subido. No hay deshacer del lote completo: cada
+   * archivo es su propia fila, con su propio autor y su propia fecha, y
+   * descartar filas buenas porque otra falló sería borrar trabajo hecho.
    */
   async function adjuntar(tipo, files) {
     const lista = Array.from(files || [])
     if (!lista.length) return
     setSubiendo(tipo)
     setError(null)
+    setCarga(null)
+
+    const subidos = []
+    const fallas  = []
 
     for (const file of lista) {
       const ext  = file.name.split('.').pop()
@@ -374,18 +387,24 @@ export default function Ficha() {
 
       const { error: upErr } = await supabase.storage.from('taller').upload(path, file)
       if (upErr) {
-        setError(`No se pudo subir ${file.name}: ${upErr.message}`)
-        break
+        fallas.push({ nombre: file.name, motivo: motivoCarga(upErr) })
+        continue
       }
       // El autor y la fecha los pone la base.
       const { error: insErr } = await supabase.from('vehiculo_archivo')
         .insert({ vehiculo_id: id, tipo, path, nombre: file.name })
       if (insErr) {
-        setError(`${file.name}: ${insErr.message}`)
-        break
+        // El objeto quedó en el bucket sin fila que lo reclame. No se intenta
+        // sacar: la ficha lista filas, no objetos, así que para el usuario no
+        // existe —igual que un adjunto anulado, que también sigue en el
+        // bucket a propósito.
+        fallas.push({ nombre: file.name, motivo: motivoCarga(insErr) })
+        continue
       }
+      subidos.push(file.name)
     }
 
+    setCarga({ tipo, total: lista.length, subidos, fallas })
     await cargar()
     setSubiendo(null)
   }
@@ -709,9 +728,13 @@ export default function Ficha() {
 
           {pdfs.map(x => (
             <div key={x.id} className={`t-doc${x.anulado_en ? ' anulado' : ''}`}>
-              <a href={x.url} target="_blank" rel="noreferrer" style={{ flex: 1, color: 'inherit' }}>
+              <a href={x.url} target="_blank" rel="noreferrer"
+                 style={{ flex: 1, minWidth: 0, color: 'inherit' }}>
                 <span style={{ display: 'block' }}>{TIPO_ARCHIVO[x.tipo] || x.tipo}</span>
+                {/* El nombre del archivo es lo único que distingue tres
+                    facturas del mismo auto cargadas el mismo día. */}
                 <span className="t-doc-m">
+                  {x.nombre ? `${x.nombre} · ` : ''}
                   {x.autor ? `${x.autor.nombre}${x.autor.apellido ? ' ' + x.autor.apellido : ''} · ` : ''}
                   {new Date(x.created_at).toLocaleDateString('es-AR',
                     { day: '2-digit', month: '2-digit', year: '2-digit' })}
@@ -763,12 +786,16 @@ export default function Ficha() {
                   </label>
                 )}
 
+                {/* Los documentos también van de a varios: una orden puede
+                    tener tres hojas escaneadas y la facturación llega en
+                    lote. Cada archivo queda como su propia fila, con su
+                    propio autor, y se anula por separado. */}
                 {subeDocs && DOCUMENTOS_FICHA
                   .filter(d => !d.economico || verMontos)
                   .map(d => (
                     <label key={d.id} className="t-drop" style={{ margin: 0 }}>
                       {subiendo === d.id ? 'Subiendo…' : `Agregar ${d.label.toLowerCase()}`}
-                      <input type="file" hidden accept="application/pdf,image/*"
+                      <input type="file" hidden multiple accept="application/pdf,image/*"
                              disabled={subiendo !== null}
                              onChange={ev => {
                                adjuntar(d.id, ev.target.files)
@@ -777,6 +804,41 @@ export default function Ficha() {
                     </label>
                   ))}
               </div>
+
+              {/* Qué pasó con la última tanda. Si falló alguno, el aviso es
+                  rojo y dice cuál: el riesgo real es elegir cinco archivos,
+                  ver la pantalla volver a la normalidad y suponer que
+                  entraron los cinco. */}
+              {carga && (
+                <div className={carga.fallas.length ? 't-error' : 't-aviso'}
+                     style={{ marginTop: 12, marginBottom: 0 }}>
+                  <strong style={{ fontWeight: 600 }}>
+                    {carga.fallas.length === 0
+                      ? carga.total === 1
+                        ? '1 archivo cargado.'
+                        : `${carga.total} archivos cargados.`
+                      : carga.subidos.length === 0
+                        ? carga.total === 1
+                          ? 'No se pudo cargar el archivo.'
+                          : `No se pudo cargar ninguno de los ${carga.total} archivos.`
+                        : `Se cargaron ${carga.subidos.length} de ${carga.total} archivos.`}
+                  </strong>
+                  {carga.fallas.length > 0 && (
+                    <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                      {carga.fallas.map((f, i) => (
+                        <li key={`${f.nombre}-${i}`} style={{ overflowWrap: 'anywhere' }}>
+                          <strong style={{ fontWeight: 600 }}>{f.nombre}</strong>: {f.motivo}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {carga.fallas.length > 0 && carga.subidos.length > 0 && (
+                    <p style={{ margin: '6px 0 0' }}>
+                      Los demás quedaron cargados. Volvé a intentar solo con los que fallaron.
+                    </p>
+                  )}
+                </div>
+              )}
             </>
           )}
         </Panel>

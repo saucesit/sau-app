@@ -52,6 +52,47 @@ export const DOCUMENTOS_FICHA = [
 ]
 
 /**
+ * Por qué no entró un archivo, dicho en castellano.
+ *
+ * Se suben de a tandas, y de una tanda hay que poder contar qué pasó con cada
+ * archivo. El motivo crudo no alcanza: Storage contesta en inglés y Postgres
+ * contesta con el nombre de la policy que rechazó la fila. Lo que el usuario
+ * necesita distinguir son tres cosas distintas que se resuelven distinto: que
+ * le falte un permiso, que el archivo sea muy grande, o que se le haya cortado
+ * internet.
+ *
+ * Esto es solo el texto del aviso. Quién puede subir qué lo decide la base.
+ */
+export function motivoCarga(err) {
+  const txt = String(err?.message || err?.error || err || '').toLowerCase()
+  const cod = String(err?.statusCode ?? err?.status ?? err?.code ?? '')
+
+  // Rechazo de permisos: la policy de la tabla (42501) o la del bucket (403).
+  if (cod === '42501' || txt.includes('row-level security'))
+    return 'no tenés permiso para subir este tipo de documento'
+  if (cod === '403' || txt.includes('unauthorized') || txt.includes('not authorized'))
+    return 'no tenés permiso para subir este tipo de documento'
+
+  if (cod === '413' || txt.includes('maximum allowed size') ||
+      txt.includes('payload too large') || txt.includes('entity too large'))
+    return 'el archivo es demasiado grande'
+
+  if (txt.includes('mime')) return 'ese tipo de archivo no se acepta'
+
+  if (txt.includes('already exists') || txt.includes('duplicate'))
+    return 'ya hay un archivo cargado con ese nombre'
+
+  if (txt.includes('failed to fetch') || txt.includes('networkerror') ||
+      txt.includes('network request failed') || txt.includes('load failed'))
+    return 'se cortó la conexión'
+
+  if (!txt) return 'error desconocido'
+  // Lo que quede, sin el prefijo técnico, como en el resto de la ficha.
+  return String(err?.message || err?.error || err).replace(/^.*?:\s*/, '').trim() ||
+         'error desconocido'
+}
+
+/**
  * Con qué tipo se archiva una foto según dónde está el vehículo.
  *
  * Las fotos se sacan todo el tiempo —al recibirlo, con el auto abierto, antes
