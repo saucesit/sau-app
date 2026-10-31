@@ -23,6 +23,24 @@ export const ETAPAS = [
 export const ETAPAS_ACTIVAS = ETAPAS.filter(e => e.id !== 'entregado')
 
 /**
+ * Las dos formas de salir del circuito, en un solo lugar.
+ *
+ * Durante mucho tiempo "vigente" fue `etapa <> 'entregado'`, escrito a mano en
+ * cada consulta. Eso alcanzaba mientras entregar fuera la única salida. Desde
+ * la 0052 hay otra —anular un ingreso cargado por error— y un anulado que
+ * sigue sumando en un KPI es peor que no poder anular, así que la condición
+ * vive acá y no repartida.
+ *
+ * `anulado` es lo contrario de trabajo: no es una etapa, es una marca encima.
+ * Un entregado anulado sigue anulado; un anulado no se mueve de etapa hasta
+ * que alguien lo restaure. Eso lo hace cumplir la base.
+ */
+export const estaAnulado = (v) => !!v?.anulado_en
+
+/** ¿Este vehículo es trabajo vigente del taller? */
+export const esActivo = (v) => !estaAnulado(v) && v?.etapa !== 'entregado'
+
+/**
  * Etapas donde efectivamente trabaja un operario, y por lo tanto las únicas que
  * pueden ser su especialidad. Recepción es administrativa y Control Calidad es
  * la antesala de la entrega, que valida quien coordina. Tiene que coincidir con
@@ -320,7 +338,10 @@ export function pendienteFacturar(v, rubro) {
 export function totalesAFacturar(vehiculos) {
   const out = { compania: 0, franquicia: 0, particular: 0 }
   vehiculos.forEach(v => {
-    if (v.etapa === 'entregado') return
+    // Las dos salidas del circuito: entregado y anulado. Un ingreso anulado
+    // conserva sus importes —no se borra nada— pero deja de ser plata que el
+    // taller espera cobrar por un trabajo en curso.
+    if (!esActivo(v)) return
     RUBROS.forEach(r => { out[r.id] += pendienteFacturar(v, r) })
   })
   return out

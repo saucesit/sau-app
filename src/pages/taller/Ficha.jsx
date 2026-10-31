@@ -7,7 +7,7 @@ import {
   diasEnTaller, diasEnEtapa, estado, proximaAccion, patenteLegible,
   pendiente, total, fmtMonto, fmtFecha,
   RUBROS, ESTADOS_FACTURACION, estadoFacturacion,
-  DOCUMENTOS_FICHA, TIPO_ARCHIVO, tipoFoto, etapaPrevia, motivoCarga,
+  DOCUMENTOS_FICHA, TIPO_ARCHIVO, tipoFoto, etapaPrevia, motivoCarga, estaAnulado,
 } from '../../lib/taller'
 
 function Panel({ legend, accion, children }) {
@@ -137,6 +137,8 @@ export default function Ficha() {
   // Se muestra al lado de los botones de carga, que es donde está mirando
   // quien acaba de elegir cinco archivos.
   const [carga,    setCarga]    = useState(() => estadoNavegacion?.cargaIngreso || null)
+  // Quién anuló el ingreso, resuelto aparte como el resto de los autores.
+  const [anuladoPor, setAnuladoPor] = useState(null)
 
   const verMontos     = tienePermiso('taller.montos')
   const puedeValidar  = tienePermiso('taller.validar')
@@ -182,6 +184,7 @@ export default function Ficha() {
     const autores = [...new Set([
       ...(evs  || []).map(e => e.autor_id),
       ...(arch || []).flatMap(a => [a.autor_id, a.anulado_por]),
+      veh?.anulado_por,
     ].filter(Boolean))]
     let porId = {}
     if (autores.length) {
@@ -189,6 +192,8 @@ export default function Ficha() {
         .from('profile').select('id, nombre, apellido').in('id', autores)
       porId = Object.fromEntries((perfiles || []).map(p => [p.id, p]))
     }
+    if (veh?.anulado_por) setAnuladoPor(porId[veh.anulado_por] || null)
+    else setAnuladoPor(null)
 
     setEventos((evs || []).map(e => ({ ...e, autor: porId[e.autor_id] || null })))
 
@@ -387,6 +392,55 @@ export default function Ficha() {
     await llamar('taller_reabrir_vehiculo', { p_vehiculo: id, p_motivo: motivo.trim() })
   }
 
+  /**
+   * Anular un ingreso cargado por error.
+   *
+   * No borra nada: el vehículo sale del circuito pero conserva sus fotos, sus
+   * papeles, su bitácora y sus importes. Si tiene información económica
+   * cargada, la confirmación lo dice antes, porque es lo que más asusta y lo
+   * que más conviene aclarar: nada de eso desaparece.
+   */
+  async function anularVehiculo() {
+    const economico = []
+    if (total(v) > 0) economico.push('importes cargados')
+    if (RUBROS.some(r => estadoFacturacion(v, r) === 'facturado')) economico.push('rubros facturados')
+    if (RUBROS.some(r => v[r.cobro])) economico.push('cobros marcados')
+    const conPapeles = archivos.filter(a => !a.anulado_en).length
+
+    const aviso = economico.length
+      ? `\nATENCIÓN: este vehículo tiene ${economico.join(', ')}. ` +
+        'Esa información NO se elimina: queda asociada al vehículo anulado y se ' +
+        'puede consultar desde ANULADOS en el archivo.\n'
+      : ''
+
+    const motivo = window.prompt(
+      `Anular el ingreso de ${patenteLegible(v.patente)} (${etapaLabel(v.etapa)}).\n\n` +
+      'Sale de la pizarra y deja de sumar en los totales. No se borra nada: ' +
+      `se conservan ${conPapeles} archivo(s), la bitácora completa y todos los datos.\n` +
+      aviso +
+      '\n¿Por qué se anula este ingreso?'
+    )
+    if (motivo === null) return
+    if (!motivo.trim()) { setError('Hace falta un motivo para anular el ingreso.'); return }
+    if (await llamar('taller_anular_vehiculo', { p_vehiculo: id, p_motivo: motivo.trim() })) {
+      navigate('/taller')
+    }
+  }
+
+  /** Devolver al circuito un ingreso anulado, con sus reglas revalidadas. */
+  async function restaurarVehiculo() {
+    const motivo = window.prompt(
+      `Restaurar el ingreso de ${patenteLegible(v.patente)}.\n\n` +
+      `Vuelve al circuito exactamente donde estaba: ${etapaLabel(v.etapa)}.\n` +
+      'Si mientras tanto se cargó otra orden abierta del mismo auto, no se va a ' +
+      'poder restaurar hasta resolver cuál de las dos vale.\n\n' +
+      '¿Por qué se restaura?'
+    )
+    if (motivo === null) return
+    if (!motivo.trim()) { setError('Hace falta un motivo para restaurar el ingreso.'); return }
+    await llamar('taller_restaurar_vehiculo', { p_vehiculo: id, p_motivo: motivo.trim() })
+  }
+
   const toggleExcepcion = (exId) =>
     llamar('taller_cambiar_excepcion', { p_vehiculo: id, p_excepcion: v.excepcion === exId ? null : exId })
 
@@ -481,6 +535,10 @@ export default function Ficha() {
 
   const e         = estado(v)
   const a         = proximaAccion(v)
+  // Un ingreso anulado no participa del circuito: no avanza, no retrocede, no
+  // se entrega y no se reabre. La base lo hace cumplir; acá se esconden las
+  // acciones para no ofrecer botones que van a ser rechazados.
+  const anulado   = estaAnulado(v)
   const entregado = v.etapa === 'entregado'
   // La última etapa antes de entregar. Desde 0040 es Control de Calidad.
   const terminado = v.etapa === 'control_calidad'
@@ -531,7 +589,31 @@ export default function Ficha() {
         <ResultadoCarga carga={carga} estilo={{ marginTop: 16, marginBottom: 0 }} />
       )}
 
-      {!entregado && (
+      {/* Lo primero que hay que ver al abrir un anulado: que está anulado, por
+          qué, quién y cuándo. Todo lo demás de la ficha sigue ahí abajo. */}
+      {anulado && (
+        <div className="t-accion bloq" style={{ marginTop: 16 }}>
+          <div className="t-accion-l">
+            INGRESO ANULADO EL {fmtFecha(v.anulado_en)}
+            {anuladoPor ? ` · ${anuladoPor.nombre}${anuladoPor.apellido ? ' ' + anuladoPor.apellido : ''}` : ''}
+          </div>
+          <div className="t-accion-t">{v.anulado_motivo}</div>
+          <div className="t-accion-d">
+            Quedó fuera del circuito: no está en la pizarra ni suma en los
+            totales. Sus archivos, su bitácora, sus importes y su facturación se
+            conservan completos, acá abajo.
+          </div>
+          {puedeAdministrar && (
+            <div className="t-acciones">
+              <button className="t-btn" onClick={restaurarVehiculo} disabled={accion}>
+                Restaurar vehículo
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!entregado && !anulado && (
         <div className={`t-accion${a.bloqueado ? ' bloq' : ''}`} style={{ marginTop: 16 }}>
           <div className="t-accion-l">PRÓXIMA ACCIÓN · {diasEnEtapa(v)} DÍAS EN {etapaLabel(v.etapa).toUpperCase()}</div>
           <div className="t-accion-t">{a.titulo}</div>
@@ -568,7 +650,7 @@ export default function Ficha() {
       {/* Reabrir es otra cosa que retroceder: saca el auto del archivo, le
           borra la fecha de entrega y devuelve sus importes pendientes al
           tablero. Por eso lo hace quien administra el taller. */}
-      {entregado && puedeAdministrar && (
+      {entregado && !anulado && puedeAdministrar && (
         <div className="t-accion" style={{ marginTop: 16 }}>
           <div className="t-accion-l">ENTREGADO EL {fmtFecha(v.fecha_entrega)}</div>
           <div className="t-accion-t">Reabrir vehículo</div>
@@ -587,7 +669,7 @@ export default function Ficha() {
       {/* Un auto entregado no puede entrar en mecánica ni quedar detenido:
           el panel quedaba visible con los botones muertos y un texto que decía
           que "retoma en Entregado". */}
-      {!entregado && (
+      {!entregado && !anulado && (
       <Panel legend="ESTADOS EN PARALELO">
         <div className="t-fila">
           {EXCEPCIONES.map(x => (
@@ -906,6 +988,25 @@ export default function Ficha() {
           </div>
         )}
       </Panel>
+
+      {/* Última de la ficha, y no por casualidad: anular un ingreso es lo que
+          menos se hace y lo que más conviene que cueste encontrar. Sigue sin
+          existir el borrado: esto saca el vehículo del circuito y nada más. */}
+      {!anulado && puedeAdministrar && (
+        <Panel legend="ANULAR ESTE INGRESO">
+          <p className="t-aviso">
+            Si este vehículo se cargó por error, anular el ingreso lo saca de la
+            pizarra y de los totales. No se borra nada: los archivos, la
+            bitácora, los importes y la facturación quedan guardados y se
+            consultan desde ANULADOS, en el archivo. Se puede restaurar después.
+          </p>
+          <div className="t-acciones">
+            <button className="t-btn fantasma" onClick={anularVehiculo} disabled={accion}>
+              Anular ingreso
+            </button>
+          </div>
+        </Panel>
+      )}
     </main>
   )
 }

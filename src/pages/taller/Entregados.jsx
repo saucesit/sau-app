@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import {
   patenteLegible, fmtFecha, fmtMonto, total, aFecha, facturacionCompleta,
-  limpiarBusqueda, normalizarPatente,
+  limpiarBusqueda, normalizarPatente, etapaLabel,
 } from '../../lib/taller'
 
 /**
@@ -25,19 +25,41 @@ import {
 
 const PAGINA = 40
 
-function Fila({ v, verMontos, onAbrir }) {
+/**
+ * Las dos salidas del circuito, en la misma pantalla y en solapas separadas.
+ *
+ * Un anulado no es un entregado: no se terminó el trabajo, se canceló el
+ * ingreso. Mezclarlos ensuciaría el archivo —que es lo que se le muestra a una
+ * compañía cuando pregunta por un trabajo— y esconderlos los volvería
+ * imposibles de auditar. Por eso van acá, aparte y con nombre propio.
+ */
+const VISTAS = [
+  { id: 'entregados', label: 'Entregados', fecha: 'Entrega' },
+  { id: 'anulados',   label: 'Anulados',   fecha: 'Anulado' },
+]
+
+function Fila({ v, vista, verMontos, onAbrir }) {
+  const anulados = vista === 'anulados'
   return (
-    <button className="t-row" onClick={() => onAbrir(v.id)}>
+    <button className={`t-row${anulados ? ' anulada' : ''}`} onClick={() => onAbrir(v.id)}>
       <span className="t-row-plate">{patenteLegible(v.patente)}</span>
       <span className="t-row-veh">{v.vehiculo}</span>
       <span className="t-row-cli">{v.cliente_nombre}</span>
-      <span className="t-row-cia">{v.compania}</span>
-      <span className="t-row-fec">{fmtFecha(v.fecha_entrega)}</span>
+      {/* En anulados importa más en qué etapa quedó que de qué compañía era:
+          dice si se canceló al ingresar o con el trabajo empezado. */}
+      <span className="t-row-cia">
+        {anulados ? etapaLabel(v.etapa) : v.compania}
+      </span>
+      <span className="t-row-fec">
+        {fmtFecha(anulados ? v.anulado_en : v.fecha_entrega)}
+      </span>
       {verMontos && <span className="t-row-tot">{fmtMonto(total(v))}</span>}
       {verMontos && (
-        <span className={`t-row-fact${facturacionCompleta(v) ? ' ok' : ''}`}>
-          {facturacionCompleta(v) ? 'Facturado' : 'Pendiente'}
-        </span>
+        anulados
+          ? <span className="t-row-fact">{v.anulado_motivo || '—'}</span>
+          : <span className={`t-row-fact${facturacionCompleta(v) ? ' ok' : ''}`}>
+              {facturacionCompleta(v) ? 'Facturado' : 'Pendiente'}
+            </span>
       )}
     </button>
   )
@@ -50,11 +72,14 @@ export default function Entregados() {
 
   const [filas,    setFilas]    = useState([])
   const [busqueda, setBusqueda] = useState('')
+  const [vista,    setVista]    = useState('entregados')
   const [cargando, setCargando] = useState(true)
   const [hayMas,   setHayMas]   = useState(false)
   const [error,    setError]    = useState(null)
+  // Cuántos anulados hay, para que la solapa lo diga sin tener que entrar.
+  const [cuantosAnulados, setCuantosAnulados] = useState(0)
 
-  const buscar = useCallback(async (termino, desde = 0) => {
+  const buscar = useCallback(async (termino, desde = 0, cual = 'entregados') => {
     if (!empresaActivaId) return
     setCargando(true)
     setError(null)
@@ -63,7 +88,12 @@ export default function Entregados() {
       .from('vehiculo')
       .select('*')
       .eq('empresa_id', empresaActivaId)
-      .eq('etapa', 'entregado')
+
+    // Un entregado anulado sigue anulado: la marca manda sobre la etapa, y por
+    // eso cada solapa excluye explícitamente a la otra.
+    q = cual === 'anulados'
+      ? q.not('anulado_en', 'is', null)
+      : q.eq('etapa', 'entregado').is('anulado_en', null)
 
     // Misma regla que la pizarra: limpiarBusqueda y normalizarPatente viven en
     // lib/taller.js y las usan las dos pantallas. Acá se arma el `or` del
@@ -80,7 +110,8 @@ export default function Entregados() {
     }
 
     const { data, error: err } = await q
-      .order('fecha_entrega', { ascending: false, nullsFirst: false })
+      .order(cual === 'anulados' ? 'anulado_en' : 'fecha_entrega',
+             { ascending: false, nullsFirst: false })
       .range(desde, desde + PAGINA - 1)
 
     if (err) {
@@ -108,16 +139,28 @@ export default function Entregados() {
 
   // Se espera a que deje de tipear: son patentes cortas y cada tecla es una consulta.
   useEffect(() => {
-    const t = setTimeout(() => buscar(busqueda, 0), busqueda ? 300 : 0)
+    const t = setTimeout(() => buscar(busqueda, 0, vista), busqueda ? 300 : 0)
     return () => clearTimeout(t)
-  }, [busqueda, buscar])
+  }, [busqueda, vista, buscar])
+
+  // El contador de la solapa. Es una consulta de conteo, no trae filas.
+  useEffect(() => {
+    if (!empresaActivaId) return
+    supabase.from('vehiculo')
+      .select('id', { count: 'exact', head: true })
+      .eq('empresa_id', empresaActivaId)
+      .not('anulado_en', 'is', null)
+      .then(({ count }) => setCuantosAnulados(count || 0))
+  }, [empresaActivaId, filas])
 
   const abrir = (id) => navigate(`/taller/${id}`)
+
+  const esAnulados = vista === 'anulados'
 
   // Agrupa por año para que un archivo largo siga siendo legible.
   const grupos = []
   filas.forEach(v => {
-    const f = aFecha(v.fecha_entrega)
+    const f = aFecha(esAnulados ? v.anulado_en : v.fecha_entrega)
     const anio = f ? f.getFullYear() : 'Sin fecha'
     const ultimo = grupos[grupos.length - 1]
     if (ultimo && ultimo.anio === anio) ultimo.autos.push(v)
@@ -129,14 +172,31 @@ export default function Entregados() {
       <div className="t-head">
         <div>
           <p className="t-eyebrow">ARCHIVO DEL TALLER</p>
-          <h1 className="t-h1">Vehículos entregados</h1>
+          <h1 className="t-h1">{esAnulados ? 'Ingresos anulados' : 'Vehículos entregados'}</h1>
           <p className="t-sub">
-            Historial de consulta. No se mezcla con la pizarra de vehículos activos.
+            {esAnulados
+              ? 'Ingresos cargados por error y dados de baja. Conservan todo: archivos, bitácora, importes y facturación.'
+              : 'Historial de consulta. No se mezcla con la pizarra de vehículos activos.'}
           </p>
         </div>
       </div>
 
-      <div className="t-buscador">
+      {/* Dos solapas, no un filtro escondido: un anulado no es un entregado y
+          tiene que verse que son dos cosas distintas. */}
+      <div className="t-opciones" style={{ marginTop: 14 }}>
+        {VISTAS.map(x => (
+          <button key={x.id} type="button"
+                  className={`t-opcion${vista === x.id ? ' elegida' : ''}`}
+                  onClick={() => { if (vista !== x.id) { setFilas([]); setVista(x.id) } }}>
+            <span className="t-opcion-t">
+              {x.label.toUpperCase()}
+              {x.id === 'anulados' && cuantosAnulados > 0 && ` · ${cuantosAnulados}`}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <div className="t-buscador" style={{ marginTop: 12 }}>
         <input
           className="t-input"
           value={busqueda}
@@ -157,8 +217,10 @@ export default function Entregados() {
       ) : filas.length === 0 ? (
         <p className="t-aviso" style={{ marginTop: 18 }}>
           {busqueda
-            ? `No hay vehículos entregados que coincidan con "${busqueda}".`
-            : 'Todavía no se entregó ningún vehículo. Cuando se entregue el primero, queda archivado acá.'}
+            ? `No hay ${esAnulados ? 'ingresos anulados' : 'vehículos entregados'} que coincidan con "${busqueda}".`
+            : esAnulados
+              ? 'No hay ningún ingreso anulado. Si alguna vez se carga un vehículo por error, se anula desde su ficha y aparece acá.'
+              : 'Todavía no se entregó ningún vehículo. Cuando se entregue el primero, queda archivado acá.'}
         </p>
       ) : (
         <>
@@ -167,17 +229,17 @@ export default function Entregados() {
               <span>Patente</span>
               <span>Vehículo</span>
               <span>Cliente</span>
-              <span>Compañía</span>
-              <span>Entrega</span>
+              <span>{esAnulados ? 'Etapa' : 'Compañía'}</span>
+              <span>{esAnulados ? 'Anulado' : 'Entrega'}</span>
               {verMontos && <span>Total</span>}
-              {verMontos && <span>Facturación</span>}
+              {verMontos && <span>{esAnulados ? 'Motivo' : 'Facturación'}</span>}
             </div>
 
             {grupos.map(g => (
               <div key={g.anio} className="t-grupo">
                 <p className="t-grupo-t">{g.anio}</p>
                 {g.autos.map(v => (
-                  <Fila key={v.id} v={v} verMontos={verMontos} onAbrir={abrir} />
+                  <Fila key={v.id} v={v} vista={vista} verMontos={verMontos} onAbrir={abrir} />
                 ))}
               </div>
             ))}
@@ -186,8 +248,8 @@ export default function Entregados() {
           {hayMas && (
             <div className="t-acciones">
               <button className="t-btn fantasma" disabled={cargando}
-                      onClick={() => buscar(busqueda, filas.length)}>
-                {cargando ? 'Cargando…' : 'Ver más entregados'}
+                      onClick={() => buscar(busqueda, filas.length, vista)}>
+                {cargando ? 'Cargando…' : (esAnulados ? 'Ver más anulados' : 'Ver más entregados')}
               </button>
             </div>
           )}

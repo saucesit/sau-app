@@ -96,6 +96,8 @@ export default function Taller() {
       .select('*')
       .eq('empresa_id', empresaActivaId)
       .neq('etapa', 'entregado')
+      // Un ingreso anulado no es trabajo vigente. Ver 0052.
+      .is('anulado_en', null)
       .order('fecha_ingreso', { ascending: true })
 
     // Los montos viven en otra tabla, cerrada por policy: quien no tiene

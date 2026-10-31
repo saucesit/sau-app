@@ -123,11 +123,14 @@ export default function Tablero() {
     if (!empresaActivaId) return
     setCargando(true)
 
+    // Las dos salidas del circuito. Un anulado no está en la pizarra ni suma
+    // en los contadores de arriba: se consulta desde el archivo. Ver 0052.
     const { data } = await supabase
       .from('vehiculo')
       .select('*')
       .eq('empresa_id', empresaActivaId)
       .neq('etapa', 'entregado')
+      .is('anulado_en', null)
       .order('fecha_ingreso', { ascending: true })
 
     const autos = data || []

@@ -335,6 +335,9 @@
   grid-template-columns: 104px minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 0.9fr) 78px 112px 78px;
 }
 .t-row:hover { background: var(--t-panel-2); }
+/* Un ingreso anulado se lee distinto de uno entregado: el trabajo no se hizo. */
+.t-row.anulada .t-row-plate { text-decoration: line-through; }
+.t-row.anulada > span { color: var(--t-ink-3); }
 .t-row > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .t-row.cabecera {
   font-family: var(--t-mono); font-size: 10px; letter-spacing: 0.08em; color: var(--t-ink-2);
