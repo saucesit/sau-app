@@ -1,5 +1,6 @@
 import { Outlet, NavLink, Navigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import ChatIA from './ChatIA'
 import '../../styles/taller.css'
 
 /**
@@ -105,6 +106,10 @@ export default function TallerLayout() {
         <div className="t-content">
           <Outlet />
         </div>
+
+        {/* SAU IA: experimental, se dibuja solo para la empresa y el usuario
+            habilitados. El recorte real lo hace la Edge Function. */}
+        <ChatIA />
       </div>
     </div>
   )

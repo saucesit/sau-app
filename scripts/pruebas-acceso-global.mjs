@@ -119,8 +119,18 @@ try {
     const { body: mm } = await rest(completo, `membresia?empresa_id=neq.${EMPRESA_A}&select=id`)
     check('no ve equipos de otras empresas', mm?.length === 0, `ve ${mm?.length}`)
 
-    const { body: cas } = await rest(completo, 'caso?select=id')
-    check('no ve casos de otras empresas', (cas?.length || 0) === 0, `ve ${cas?.length}`)
+    // Se afirma la regla, no el cero: desde que SAU IA guarda sus charlas en
+    // `caso`, la empresa de prueba tiene casos propios y verlos es correcto.
+    // Lo que no puede pasar es ver uno de OTRA empresa.
+    const { body: cas } = await rest(completo, 'caso?select=id,empresa_id')
+    check('no ve casos de otras empresas',
+          (cas || []).every(c => c.empresa_id === EMPRESA_A),
+          `ve ${cas?.length}, de empresas ${[...new Set((cas || []).map(c => c.empresa_id))].join(', ')}`)
+
+    const { body: msj } = await rest(completo, 'caso_mensaje?select=caso_id')
+    const propiosCasos = new Set((cas || []).map(c => c.id))
+    check('ni mensajes de casos ajenos',
+          (msj || []).every(m => propiosCasos.has(m.caso_id)), `ve ${msj?.length} mensajes`)
 
     if (RUTA_AJENA) {
       const f = await firmar(completo, RUTA_AJENA)
