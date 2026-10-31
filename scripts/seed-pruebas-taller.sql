@@ -87,10 +87,11 @@ begin
   --   ZZED%     pruebas-edicion-ficha (expediente editable)
   --   ZZOTRA%   pruebas-edicion-ficha (choque de patentes)
   --   ZZRET%    pruebas-retroceso (volver de etapa y reabrir)
+  --   ZZALTA%   smoke del alta con carga parcial de archivos
   delete from vehiculo
    where empresa_id = v_a
      and (patente like 'ZZMONTO%' or patente like 'ZZED%' or patente like 'ZZOTRA%'
-          or patente like 'ZZRET%');
+          or patente like 'ZZRET%' or patente like 'ZZALTA%');
 
   -- Un vehículo de prueba en la empresa A, en chapa y sin trabajo marcado
   if not exists (select 1 from vehiculo where empresa_id = v_a and patente = 'ZZTEST01') then

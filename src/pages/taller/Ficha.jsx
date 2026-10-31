@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import {
@@ -44,6 +44,55 @@ function Dato({ k, v }) {
   return <div className="t-kv"><dt>{k}</dt><dd>{v || '—'}</dd></div>
 }
 
+/**
+ * Qué pasó con la última tanda de archivos: cuántos entraron y cuáles no.
+ *
+ * Lo usan dos momentos distintos con el mismo formato. Cuando se adjunta algo
+ * desde la ficha va pegado a los botones de carga; cuando viene del alta va
+ * arriba de todo, porque quien acaba de ingresar el auto cae en el encabezado
+ * y no tiene por qué bajar hasta Respaldo para enterarse de que faltó una foto.
+ */
+function ResultadoCarga({ carga, estilo }) {
+  if (!carga) return null
+  const { total, subidos = [], fallas = [], desdeAlta } = carga
+  return (
+    <div className={fallas.length ? 't-error' : 't-aviso'} style={estilo}>
+      <strong style={{ fontWeight: 600 }}>
+        {fallas.length === 0
+          ? total === 1 ? '1 archivo cargado.' : `${total} archivos cargados.`
+          : total === 0
+            // Sin archivos en juego: lo que falló fue otra cosa del alta,
+            // como los importes iniciales.
+            ? 'El vehículo quedó cargado, pero algo no se guardó.'
+          : subidos.length === 0
+            ? total === 1
+              ? (desdeAlta ? 'El vehículo quedó cargado, pero el archivo no subió.'
+                           : 'No se pudo cargar el archivo.')
+              : (desdeAlta ? `El vehículo quedó cargado, pero no subió ninguno de los ${total} archivos.`
+                           : `No se pudo cargar ninguno de los ${total} archivos.`)
+            : (desdeAlta ? `El vehículo quedó cargado. Subieron ${subidos.length} de ${total} archivos.`
+                         : `Se cargaron ${subidos.length} de ${total} archivos.`)}
+      </strong>
+      {fallas.length > 0 && (
+        <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+          {fallas.map((f, i) => (
+            <li key={`${f.nombre}-${i}`} style={{ overflowWrap: 'anywhere' }}>
+              <strong style={{ fontWeight: 600 }}>{f.nombre}</strong>: {f.motivo}
+            </li>
+          ))}
+        </ul>
+      )}
+      {fallas.length > 0 && (
+        <p style={{ margin: '6px 0 0' }}>
+          {desdeAlta
+            ? 'No hace falta volver a cargar el vehículo: sumalos acá abajo, en RESPALDO.'
+            : 'Los demás quedaron cargados. Volvé a intentar solo con los que fallaron.'}
+        </p>
+      )}
+    </div>
+  )
+}
+
 /** La cadena completa, con la etapa actual marcada en naranja. */
 function Cadena({ etapa }) {
   const i = ETAPAS.findIndex(e => e.id === etapa)
@@ -62,6 +111,10 @@ function Cadena({ etapa }) {
 export default function Ficha() {
   const { id } = useParams()
   const navigate = useNavigate()
+  // El alta manda acá lo que no pudo subir mientras creaba el vehículo. Llega
+  // una sola vez, en el navigate, y se muestra con el mismo recuadro que usa
+  // la carga de adjuntos de la propia ficha.
+  const { state: estadoNavegacion } = useLocation()
   const { tienePermiso, tallerEtapas } = useAuth()
 
   const [v,        setV]        = useState(null)
@@ -83,7 +136,7 @@ export default function Ficha() {
   // Resultado de la última tanda de adjuntos: cuántos entraron y cuáles no.
   // Se muestra al lado de los botones de carga, que es donde está mirando
   // quien acaba de elegir cinco archivos.
-  const [carga,    setCarga]    = useState(null)
+  const [carga,    setCarga]    = useState(() => estadoNavegacion?.cargaIngreso || null)
 
   const verMontos     = tienePermiso('taller.montos')
   const puedeValidar  = tienePermiso('taller.validar')
@@ -472,6 +525,12 @@ export default function Ficha() {
 
       {error && <p className="t-error" style={{ marginTop: 16 }}>{error}</p>}
 
+      {/* Lo que no entró durante el alta. Va arriba porque es lo primero que
+          hay que ver al caer en la ficha del auto recién ingresado. */}
+      {carga?.desdeAlta && (
+        <ResultadoCarga carga={carga} estilo={{ marginTop: 16, marginBottom: 0 }} />
+      )}
+
       {!entregado && (
         <div className={`t-accion${a.bloqueado ? ' bloq' : ''}`} style={{ marginTop: 16 }}>
           <div className="t-accion-l">PRÓXIMA ACCIÓN · {diasEnEtapa(v)} DÍAS EN {etapaLabel(v.etapa).toUpperCase()}</div>
@@ -809,35 +868,8 @@ export default function Ficha() {
                   rojo y dice cuál: el riesgo real es elegir cinco archivos,
                   ver la pantalla volver a la normalidad y suponer que
                   entraron los cinco. */}
-              {carga && (
-                <div className={carga.fallas.length ? 't-error' : 't-aviso'}
-                     style={{ marginTop: 12, marginBottom: 0 }}>
-                  <strong style={{ fontWeight: 600 }}>
-                    {carga.fallas.length === 0
-                      ? carga.total === 1
-                        ? '1 archivo cargado.'
-                        : `${carga.total} archivos cargados.`
-                      : carga.subidos.length === 0
-                        ? carga.total === 1
-                          ? 'No se pudo cargar el archivo.'
-                          : `No se pudo cargar ninguno de los ${carga.total} archivos.`
-                        : `Se cargaron ${carga.subidos.length} de ${carga.total} archivos.`}
-                  </strong>
-                  {carga.fallas.length > 0 && (
-                    <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
-                      {carga.fallas.map((f, i) => (
-                        <li key={`${f.nombre}-${i}`} style={{ overflowWrap: 'anywhere' }}>
-                          <strong style={{ fontWeight: 600 }}>{f.nombre}</strong>: {f.motivo}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {carga.fallas.length > 0 && carga.subidos.length > 0 && (
-                    <p style={{ margin: '6px 0 0' }}>
-                      Los demás quedaron cargados. Volvé a intentar solo con los que fallaron.
-                    </p>
-                  )}
-                </div>
+              {!carga?.desdeAlta && (
+                <ResultadoCarga carga={carga} estilo={{ marginTop: 12, marginBottom: 0 }} />
               )}
             </>
           )}

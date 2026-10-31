@@ -217,6 +217,81 @@ console.log('\n4. EXCEPCIONES')
         e2[0].etapa === 'preparacion' && e2[0].excepcion === null)
 }
 
+// ── 4b. Detenido frena el avance en el servidor ──────────────────
+// Migración 0051. La pantalla escondía el botón y el cartel decía que el auto
+// no avanza, pero la función nunca miraba la excepción: una llamada directa
+// pasaba por encima. Acá se llama directo, que es el camino que estaba abierto.
+//
+// SOLO detenido. Mecánica y Ampliación siguen sin regla de servidor a
+// propósito, y estas pruebas lo fijan para que no se cambie por accidente.
+console.log('\n4b. DETENIDO FRENA EN EL SERVIDOR')
+{
+  const estado = async () => (await rest(users.admin,
+    `vehiculo?id=eq.${VEH}&select=etapa,excepcion,trabajo_hecho`)).body?.[0]
+
+  /**
+   * Deja el vehículo en condiciones de avanzar por todo lo demás, para que si
+   * el avance se rechaza sea por la excepción y no porque falta el trabajo.
+   */
+  async function listoParaAvanzar() {
+    const e = await estado()
+    if (!e.trabajo_hecho) {
+      await rpc(users.operario, 'taller_marcar_trabajo_hecho', { p_vehiculo: VEH })
+    }
+  }
+
+  const antes = await estado()
+  await listoParaAvanzar()
+
+  await rpc(users.coordinador, 'taller_cambiar_excepcion',
+            { p_vehiculo: VEH, p_excepcion: 'detenido' })
+
+  const bloqueado = await rpc(users.coordinador, 'taller_validar_avance', { p_vehiculo: VEH })
+  check('un vehículo detenido no avanza ni llamando a la función directo',
+        !bloqueado.ok, JSON.stringify(bloqueado.body))
+  check('y el mensaje dice qué hacer',
+        /detenido/i.test(JSON.stringify(bloqueado.body || '')), JSON.stringify(bloqueado.body))
+
+  const sigue = await estado()
+  check('el rechazo no movió nada', sigue.etapa === antes.etapa && sigue.excepcion === 'detenido',
+        JSON.stringify(sigue))
+
+  // Mecánica y Ampliación NO bloquean en el servidor: decisión pendiente.
+  for (const exc of ['mecanica', 'ampliacion']) {
+    await rpc(users.coordinador, 'taller_cambiar_excepcion', { p_vehiculo: VEH, p_excepcion: exc })
+    await listoParaAvanzar()
+    const r = await rpc(users.coordinador, 'taller_validar_avance', { p_vehiculo: VEH })
+    check(`${exc} sigue sin frenar en el servidor (pendiente de definición)`, r.ok,
+          JSON.stringify(r.body))
+    // Vuelve a donde estaba para no alterar el resto de la suite.
+    if (r.ok) {
+      await rpc(users.coordinador, 'taller_retroceder_etapa',
+                { p_vehiculo: VEH, p_motivo: 'Prueba de excepciones: vuelve a su etapa' })
+    }
+  }
+
+  // Levantar el detenido deja avanzar de nuevo, que es la otra mitad de la regla.
+  await rpc(users.coordinador, 'taller_cambiar_excepcion',
+            { p_vehiculo: VEH, p_excepcion: 'detenido' })
+  await listoParaAvanzar()
+  const sigueFrenado = await rpc(users.coordinador, 'taller_validar_avance', { p_vehiculo: VEH })
+  check('sigue frenado mientras esté detenido', !sigueFrenado.ok)
+
+  await rpc(users.coordinador, 'taller_cambiar_excepcion', { p_vehiculo: VEH, p_excepcion: null })
+  await listoParaAvanzar()
+  const pasa = await rpc(users.coordinador, 'taller_validar_avance', { p_vehiculo: VEH })
+  check('al levantar el detenido, avanza', pasa.ok, JSON.stringify(pasa.body))
+
+  // Y vuelve a preparación, que es donde lo encontró esta sección.
+  if (pasa.ok) {
+    await rpc(users.coordinador, 'taller_retroceder_etapa',
+              { p_vehiculo: VEH, p_motivo: 'Fin de la prueba de detenido: vuelve a su etapa' })
+  }
+  const final = await estado()
+  check('la sección deja el vehículo donde lo encontró',
+        final.etapa === antes.etapa && final.excepcion === null, JSON.stringify(final))
+}
+
 // ── 5. Bitácora ──────────────────────────────────────────────────
 console.log('\n5. BITÁCORA')
 {

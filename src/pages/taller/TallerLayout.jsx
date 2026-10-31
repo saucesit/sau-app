@@ -1,4 +1,4 @@
-import { Outlet, NavLink, useNavigate, Navigate } from 'react-router-dom'
+import { Outlet, NavLink, Navigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import '../../styles/taller.css'
 
@@ -25,7 +25,6 @@ function Icono({ d, children }) {
 
 export default function TallerLayout() {
   const { tieneModulo, tienePermiso, empresaActiva } = useAuth()
-  const navigate = useNavigate()
 
   if (!tieneModulo('taller')) return <Navigate to="/" replace />
 
@@ -41,9 +40,12 @@ export default function TallerLayout() {
       <div className="t-app">
 
         <nav className="t-rail" aria-label="Secciones del taller">
-          <button className="t-mark" onClick={() => navigate('/')} title="Volver a SAU">
-            {inicial}
-          </button>
+          {/* La marca es la inicial del taller, no un destino. Antes llevaba a
+              "/" con el título "Volver a SAU", pero desde que cada empresa
+              entra a su propio módulo eso devuelve al taller: era un botón que
+              no hacía nada. Lo que sí hacía falta —la cuenta y cerrar sesión—
+              está abajo, en CUENTA. */}
+          <div className="t-mark" aria-hidden="true">{inicial}</div>
 
           <NavLink to="/taller" end className={claseRail} title="Pizarra"
                    aria-label="Pizarra de producción">
@@ -85,6 +87,17 @@ export default function TallerLayout() {
               <span className="t-rail-label">ADMIN</span>
             </NavLink>
           )}
+
+          {/* Cuenta propia: cambiar la contraseña y cerrar sesión. La ve
+              cualquiera que entre al taller — no administra a nadie más. */}
+          <NavLink to="/taller/cuenta" className={claseRail} title="Mi cuenta"
+                   aria-label="Mi cuenta">
+            <Icono>
+              <circle cx="8" cy="5.5" r="2.6" />
+              <path d="M2.8 14c0-2.6 2.3-4.6 5.2-4.6s5.2 2 5.2 4.6" />
+            </Icono>
+            <span className="t-rail-label">CUENTA</span>
+          </NavLink>
 
           <div className="t-rail-foot">SAU<br />01</div>
         </nav>

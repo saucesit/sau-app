@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
-import { COMPANIAS, patenteLegible, etapaLabel, fmtFecha } from '../../lib/taller'
+import { COMPANIAS, patenteLegible, etapaLabel, fmtFecha, motivoCarga } from '../../lib/taller'
 
 function Campo({ label, obligatorio, ancho, children }) {
   return (
@@ -84,22 +84,44 @@ export default function Alta() {
   if (!f.fecha_ingreso)         faltantes.push('fecha de ingreso')
   if (!f.fecha_pactada)         faltantes.push('fecha pactada')
 
+  /**
+   * Sube las fotos y los dos documentos del ingreso, y cuenta qué pasó con
+   * cada uno.
+   *
+   * Un archivo que falla no tira abajo el ingreso —el vehículo ya está
+   * cargado y borrarlo sería peor— pero tampoco se pierde en silencio, que es
+   * lo que pasaba antes: iba a la consola y nadie se enteraba. Quien carga el
+   * auto está parado al lado del auto; si una foto no entró, tiene que saberlo
+   * ahí, mientras todavía puede sacarla de nuevo.
+   */
   async function subirArchivos(vehiculoId) {
     const pendientes = [
       ...fotos.map(file => ({ file, tipo: 'foto_ingreso' })),
       ...(ordenInterna  ? [{ file: ordenInterna,  tipo: 'orden_interna'  }] : []),
       ...(ordenCompania ? [{ file: ordenCompania, tipo: 'orden_compania' }] : []),
     ]
+    const subidos = []
+    const fallas  = []
+
     for (const { file, tipo } of pendientes) {
       const ext  = file.name.split('.').pop()
       const path = `${empresaActivaId}/${vehiculoId}/${tipo}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`
       const { error: upErr } = await supabase.storage.from('taller').upload(path, file)
-      // Si una foto falla no tiramos abajo el ingreso: el vehículo ya quedó cargado.
-      if (upErr) { console.error('Error subiendo archivo:', upErr); continue }
-      await supabase.from('vehiculo_archivo').insert({
+      if (upErr) {
+        fallas.push({ nombre: file.name, motivo: motivoCarga(upErr) })
+        continue
+      }
+      const { error: insErr } = await supabase.from('vehiculo_archivo').insert({
         vehiculo_id: vehiculoId, tipo, path, nombre: file.name,
       })
+      if (insErr) {
+        fallas.push({ nombre: file.name, motivo: motivoCarga(insErr) })
+        continue
+      }
+      subidos.push(file.name)
     }
+
+    return { total: pendientes.length, subidos, fallas }
   }
 
   async function guardar() {
@@ -145,17 +167,36 @@ export default function Alta() {
     // Va por RPC desde la 0044: los importes están blindados por la guardia y
     // solo se mueven con una función que deje rastro. Esta es la de carga
     // inicial y no escribe en la bitácora, porque el evento de ingreso ya está.
+    const fallas = []
     if (verMontos) {
-      await supabase.rpc('taller_montos_iniciales', {
+      const { error: montoErr } = await supabase.rpc('taller_montos_iniciales', {
         p_vehiculo:   data.id,
         p_compania:   Number(f.monto_compania   || 0),
         p_franquicia: Number(f.monto_franquicia || 0),
         p_particular: Number(f.monto_particular || 0),
       })
+      // Mismo criterio que los archivos: el vehículo ya existe, pero perder
+      // los importes sin avisar es peor que perder una foto.
+      if (montoErr) fallas.push({ nombre: 'Importes del ingreso', motivo: motivoCarga(montoErr) })
     }
 
-    await subirArchivos(data.id)
-    navigate(`/taller/${data.id}`, { replace: true })
+    const carga = await subirArchivos(data.id)
+    fallas.push(...carga.fallas)
+
+    // Siempre se va a la ficha, falle lo que falle. El vehículo ya está
+    // creado: quedarse en el formulario con los datos puestos invita a tocar
+    // "Guardar" otra vez y cargar el mismo auto dos veces, que es exactamente
+    // lo que la guardia de orden duplicada existe para evitar. Y deshacer el
+    // alta tampoco: un auto que entró al taller, entró.
+    //
+    // Lo que no entró viaja a la ficha y se muestra ahí, al lado de los
+    // botones con los que se vuelve a intentar.
+    navigate(`/taller/${data.id}`, {
+      replace: true,
+      state: fallas.length
+        ? { cargaIngreso: { total: carga.total, subidos: carga.subidos, fallas, desdeAlta: true } }
+        : undefined,
+    })
   }
 
   return (

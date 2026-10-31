@@ -251,6 +251,52 @@ console.log('\n8. NINGUNO SALE DE SU EMPRESA')
   check('el administrador no ve vehículos de otras', ajenos?.length === 0)
 }
 
+// ── 10. Cada uno cambia su contraseña y la de nadie más ──────────
+// La pantalla Mi Cuenta (/taller/cuenta) deja cambiar la propia contraseña.
+// Lo que se fija acá es que eso no haya abierto ninguna puerta nueva: el
+// cambio lo resuelve Supabase Auth sobre la sesión de quien lo pide, SAU no
+// guarda contraseñas en ninguna tabla, y la API de administración de usuarios
+// sigue necesitando service_role.
+console.log('\n10. LA CONTRASEÑA ES DE CADA UNO')
+{
+  const auth = (u, path, opts = {}) => fetch(`${SUPA}/auth/v1/${path}`, {
+    ...opts,
+    headers: { apikey: ANON, Authorization: `Bearer ${u.token}`,
+               'Content-Type': 'application/json', ...opts.headers },
+  }).then(async r => ({ status: r.status, ok: r.ok, body: await r.text() }))
+
+  // El id del otro, para intentar tocarlo.
+  const { body: yo } = await auth(operario, 'user')
+  const otroId = JSON.parse((await auth(admin, 'user')).body || '{}')?.id
+  check('cada sesión se identifica a sí misma',
+        !!JSON.parse(yo || '{}')?.id && !!otroId)
+
+  // La API de administración no la alcanza un usuario con su propio token.
+  const ajeno = await auth(operario, `admin/users/${otroId}`, {
+    method: 'PUT', body: JSON.stringify({ password: 'IntrusoCambia2026' }),
+  })
+  check('un usuario no cambia la contraseña de otro', !ajeno.ok, `status ${ajeno.status}`)
+
+  const listar = await auth(operario, 'admin/users')
+  check('ni puede listar los usuarios de Auth', !listar.ok, `status ${listar.status}`)
+
+  // Y el otro sigue entrando con la suya, que es la prueba de que no se tocó.
+  const sigue = await fetch(`${SUPA}/auth/v1/token?grant_type=password`, {
+    method: 'POST', headers: { apikey: ANON, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'taller-a-administrador@prueba.sau', password: PASS }),
+  }).then(r => r.json())
+  check('y su contraseña quedó intacta', !!sigue.access_token)
+
+  // Las contraseñas no viven en ninguna tabla nuestra: si alguna columna se
+  // llamara así, este chequeo lo diría.
+  for (const tabla of ['profile', 'membresia']) {
+    const { body } = await rest(completo, `${tabla}?select=*&limit=1`)
+    const claves = Object.keys(body?.[0] || {}).join(' ').toLowerCase()
+    check(`${tabla} no guarda contraseñas`,
+          !/password|contrasen|contraseñ|clave/.test(claves), claves)
+  }
+}
+
 // La sección 9 —qué se lleva puesto eliminar un vehículo— se movió a
 // scripts/verificar-cascada.sql: desde 0038 ningún cliente puede borrar, así
 // que ya no se puede comprobar con una cuenta ficticia por la API.

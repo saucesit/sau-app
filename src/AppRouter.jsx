@@ -43,6 +43,7 @@ const TallerAlta    = lazy(() => import('./pages/taller/Alta'))
 const TallerFicha   = lazy(() => import('./pages/taller/Ficha'))
 const TallerAdmin   = lazy(() => import('./pages/taller/Admin'))
 const TallerEntregados = lazy(() => import('./pages/taller/Entregados'))
+const TallerCuenta  = lazy(() => import('./pages/taller/Cuenta'))
 
 // Interfaz clásica del taller, la que usa cualquier empresa que no sea Forani.
 import TallerClasicoTablero from './pages/taller/clasico/Tablero'
@@ -228,6 +229,9 @@ function Rutas() {
               <Route path="/taller/nuevo" element={<TallerAlta />} />
               <Route path="/taller/entregados" element={<TallerEntregados />} />
               <Route path="/taller/admin" element={<TallerAdmin />} />
+              {/* La cuenta propia va antes de /taller/:id: si no, "cuenta" se
+                  leería como el id de un vehículo. */}
+              <Route path="/taller/cuenta" element={<TallerCuenta />} />
               <Route path="/taller/:id" element={<TallerFicha />} />
             </Route>
           )}
