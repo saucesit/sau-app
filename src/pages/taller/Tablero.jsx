@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 import {
   ETAPAS_ACTIVAS, etapaLabel, excepcionCfg,
   diasEnTaller, estado, proximaAccion, patenteLegible, pendiente, fmtMonto, aFecha,
-  RUBROS, totalesAFacturar, pendienteFacturar, coincide,
+  RUBROS, totalesAFacturar, totalesOperativos, pendienteFacturar, coincide,
 } from '../../lib/taller'
 import { useCelular } from '../../lib/useCelular'
 
@@ -200,6 +200,10 @@ export default function Tablero() {
   // que el total no dependa de cómo se cargó la lista.
   const aFacturar = useMemo(() => totalesAFacturar(vehiculos), [vehiculos])
 
+  // Cuánto trabajo hay adentro, medido en paños y en días de chapa. Mismo
+  // conjunto de autos que los totales de plata.
+  const trabajo = useMemo(() => totalesOperativos(vehiculos), [vehiculos])
+
   const elegido = vehiculos.find(v => v.id === sel) || null
 
   if (cargando) {
@@ -232,7 +236,11 @@ export default function Tablero() {
                     encontrados={visibles.length} totalAutos={vehiculos.length} />
         )}
 
-        <div className="t-kpis">
+        {/* Cinco contadores de la misma clase: cuántos autos hay, cuántos
+            piden atención, y cuánto trabajo representan. Los paños y los días
+            de chapa no son plata, así que los ve cualquiera que vea el taller
+            —a diferencia de la fila de abajo—. */}
+        <div className="t-kpis cinco">
           <div className="t-kpi">
             <div className="t-kpi-n">{String(vehiculos.length).padStart(2, '0')}</div>
             <div className="t-kpi-l">ACTIVOS EN TALLER</div>
@@ -245,19 +253,33 @@ export default function Tablero() {
             <div className="t-kpi-n">{String(vencidos).padStart(2, '0')}</div>
             <div className="t-kpi-l">FUERA DE PLAZO</div>
           </div>
+          <div className="t-kpi">
+            <div className="t-kpi-n">{String(trabajo.panos).padStart(2, '0')}</div>
+            <div className="t-kpi-l">PAÑOS A PINTAR</div>
+          </div>
+          <div className="t-kpi">
+            <div className="t-kpi-n">{String(trabajo.diasChapa).padStart(2, '0')}</div>
+            <div className="t-kpi-l">DÍAS DE CHAPA</div>
+          </div>
         </div>
 
         {/* La plata la ve solo quien tiene taller.montos. Sin ese permiso la
             base no devuelve los montos, pero igual no dibujamos la fila: si no,
             el operario ve tres carteles en cero y parece que el taller no cobra. */}
         {verMontos && (
-          <div className="t-kpis plata">
+          <div className="t-kpis plata cuatro">
             {RUBROS.map(r => (
               <div key={r.id} className="t-kpi">
                 <div className="t-kpi-n money">{fmtMonto(aFacturar[r.id])}</div>
                 <div className="t-kpi-l">A FACTURAR · {r.label.toUpperCase()}</div>
               </div>
             ))}
+            {/* La suma de los tres de al lado, no otra cuenta: sale del mismo
+                totalesAFacturar que los arma. */}
+            <div className="t-kpi total">
+              <div className="t-kpi-n money">{fmtMonto(aFacturar.total)}</div>
+              <div className="t-kpi-l">TOTAL GENERAL</div>
+            </div>
           </div>
         )}
 

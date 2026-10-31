@@ -344,6 +344,33 @@ export function totalesAFacturar(vehiculos) {
     if (!esActivo(v)) return
     RUBROS.forEach(r => { out[r.id] += pendienteFacturar(v, r) })
   })
+  // El total general sale de los tres rubros ya calculados, no de un segundo
+  // recorrido: si alguna vez cambia qué cuenta como pendiente, cambia en un
+  // solo lugar y el total lo acompaña solo.
+  out.total = out.compania + out.franquicia + out.particular
+  return out
+}
+
+/**
+ * Cuánto trabajo hay adentro del taller, en las unidades con las que el taller
+ * lo mide: paños a pintar y días de chapa.
+ *
+ * Mismo criterio de "activo" que los totales de plata —ni entregados ni
+ * anulados—, por la misma razón: son dos preguntas sobre el mismo conjunto de
+ * autos y no pueden responderse sobre conjuntos distintos.
+ *
+ * Un campo vacío, nulo o en cero simplemente no suma. Son datos opcionales del
+ * alta: que falten no tiene que romper el contador ni mostrar NaN.
+ */
+export function totalesOperativos(vehiculos) {
+  const out = { panos: 0, diasChapa: 0 }
+  vehiculos.forEach(v => {
+    if (!esActivo(v)) return
+    const p = Number(v?.panos)
+    const d = Number(v?.dias_chapa)
+    if (Number.isFinite(p)) out.panos     += p
+    if (Number.isFinite(d)) out.diasChapa += d
+  })
   return out
 }
 

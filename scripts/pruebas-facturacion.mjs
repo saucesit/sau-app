@@ -332,6 +332,79 @@ console.log('\n9. TOTALES DEL TABLERO')
         && totalesAFacturar(entUnidos).particular === 0)
   check('pero conservan sus importes para consultarlos',
         entUnidos.length === 0 || entUnidos.some(v => Number(v.monto_compania || 0) > 0))
+
+  // ── Total general: la suma de los tres, no otra cuenta ──
+  check('el total general es la suma exacta de los tres rubros',
+        t.total === t.compania + t.franquicia + t.particular,
+        `${t.total} vs ${t.compania + t.franquicia + t.particular}`)
+  check('y los entregados tampoco suman en el total general',
+        totalesAFacturar(entUnidos).total === 0)
+  check('una lista vacía da cero', totalesAFacturar([]).total === 0)
+
+  // Si un rubro deja de contar, el total lo acompaña solo. Se comprueba con
+  // un vehículo armado a mano para no depender de lo que haya cargado.
+  const uno = [{ etapa: 'chapa', monto_compania: 100, monto_franquicia: 20,
+                 monto_particular: 3, estado_compania: 'pendiente',
+                 estado_franquicia: 'pendiente', estado_particular: 'pendiente' }]
+  check('tres rubros pendientes suman al total', totalesAFacturar(uno).total === 123)
+  check('facturar uno lo baja del total',
+        totalesAFacturar([{ ...uno[0], estado_compania: 'facturado' }]).total === 23)
+  check('y un anulado no suma nada',
+        totalesAFacturar([{ ...uno[0], anulado_en: '2026-10-31T00:00:00Z' }]).total === 0)
+}
+
+// ── 9b. Totales operativos: paños y días de chapa ─────────────────
+// Son del mismo conjunto de autos que los totales de plata —ni entregados ni
+// anulados— y son campos opcionales del alta: lo que más importa acá es que
+// un dato que falta no rompa la cuenta ni muestre NaN.
+console.log('\n9b. PAÑOS A PINTAR Y DÍAS DE CHAPA')
+{
+  const { totalesOperativos } = await import('../src/lib/taller.js')
+
+  const base = { etapa: 'chapa' }
+  check('suma paños y días por separado',
+        JSON.stringify(totalesOperativos([
+          { ...base, panos: 4, dias_chapa: 3 },
+          { ...base, panos: 2, dias_chapa: 5 },
+        ])) === JSON.stringify({ panos: 6, diasChapa: 8 }))
+
+  check('un null no suma ni rompe',
+        JSON.stringify(totalesOperativos([
+          { ...base, panos: 4, dias_chapa: null },
+          { ...base, panos: null, dias_chapa: 5 },
+        ])) === JSON.stringify({ panos: 4, diasChapa: 5 }))
+
+  const faltantes = totalesOperativos([
+    { ...base },                                   // sin ninguno de los dos
+    { ...base, panos: '', dias_chapa: '' },        // vacíos
+    { ...base, panos: 0, dias_chapa: 0 },          // en cero
+    { ...base, panos: '7', dias_chapa: '2' },      // texto numérico
+  ])
+  check('vacíos, ceros y texto numérico se tratan bien',
+        faltantes.panos === 7 && faltantes.diasChapa === 2, JSON.stringify(faltantes))
+  check('y nunca devuelve NaN',
+        Number.isFinite(faltantes.panos) && Number.isFinite(faltantes.diasChapa))
+
+  check('una lista vacía da cero en los dos',
+        JSON.stringify(totalesOperativos([])) === JSON.stringify({ panos: 0, diasChapa: 0 }))
+
+  check('un entregado no suma',
+        totalesOperativos([{ etapa: 'entregado', panos: 9, dias_chapa: 9 }]).panos === 0)
+  check('un anulado tampoco',
+        totalesOperativos([{ ...base, panos: 9, dias_chapa: 9,
+                             anulado_en: '2026-10-31T00:00:00Z' }]).diasChapa === 0)
+
+  // Y contra los datos reales de la empresa de prueba, con la misma consulta
+  // que hace la pizarra.
+  const { body: act } = await rest(duena,
+    'vehiculo?etapa=neq.entregado&anulado_en=is.null&select=id,etapa,panos,dias_chapa,anulado_en')
+  const real = totalesOperativos(act || [])
+  const aMano = (act || []).reduce((s, v) => s + (Number(v.panos) || 0), 0)
+  check('sobre los activos reales coincide con la suma a mano',
+        real.panos === aMano, `${real.panos} vs ${aMano}`)
+  check('y los dos totales son números enteros válidos',
+        Number.isFinite(real.panos) && Number.isFinite(real.diasChapa),
+        JSON.stringify(real))
 }
 
 // ── 10. Corregir el importe después del alta (0044) ───────────────

@@ -102,6 +102,16 @@
 .t-kpis.plata { margin-top: -10px; }
 .t-kpi-n.money { font-size: 20px; letter-spacing: -0.01em; }
 
+/* Dos filas que no son de tres. Los contadores pasaron a cinco —se sumaron
+   los paños y los días de chapa— y la de plata a cuatro, con el total. */
+.t-kpis.cinco  { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.t-kpis.cuatro { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+/* El total general es la suma de los tres de al lado, no un cuarto rubro:
+   se distingue para que no se lea como uno más de la lista. */
+.t-kpi.total { background: var(--t-panel-2); border-color: var(--t-ink-3); }
+.t-kpi.total .t-kpi-l { color: var(--t-ink); font-weight: 600; }
+
 /* ── Pizarra ─────────────────────────────────────────────────── */
 .t-board-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
 .t-h2 { font-family: var(--t-cond); font-size: 17px; font-weight: 700; letter-spacing: 0.01em; }
@@ -457,8 +467,10 @@
   .t-row-tot   { grid-column: 2; grid-row: 4; align-self: end; }
   .t-row-fact  { grid-column: 2; grid-row: 3; text-align: right; }
 
-  /* Los tres totales de plata entran de a uno por fila en un teléfono. */
-  .t-kpis.plata { grid-template-columns: 1fr; margin-top: 0; }
+  /* Los totales de plata entran de a uno por fila en un teléfono. */
+  .t-kpis.plata, .t-kpis.plata.cuatro { grid-template-columns: 1fr; margin-top: 0; }
+  /* Los cinco contadores caen a las tres columnas de siempre: quedan 3 + 2,
+     que entra bien en una tablet o un portátil chico. */
   .t-kpis.plata .t-kpi { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
   .t-kpis.plata .t-kpi-l { margin-top: 0; }
 }
@@ -471,6 +483,9 @@
   .t-rail-btn { padding: 0 7px; gap: 5px; }
   .t-rail-label { font-size: 9px; letter-spacing: 0.04em; }
   .t-fotos { grid-template-columns: repeat(2, 1fr); }
+  /* En un teléfono los contadores van de a dos: con tres por fila, el número
+     de 24px y una etiqueta como REQUIEREN ATENCIÓN no entran juntos. */
+  .t-kpis, .t-kpis.cinco { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 /* Un adjunto anulado no se borra: se muestra tachado, con su motivo. */
