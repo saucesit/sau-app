@@ -1,0 +1,204 @@
+/**
+ * SAU IA: el panel de chat.
+ *
+ * Vive en su propio archivo y con su propio prefijo porque no es del taller:
+ * es un componente de SAU que hoy se monta ahí. Toma los colores y las
+ * tipografías del módulo donde esté montado a través de variables, pero TODAS
+ * tienen valor de respaldo, así que si mañana se cuelga de Presupuestos o de
+ * Fiado se ve bien igual, sin heredar nada.
+ *
+ * No depende de .t-input ni de .t-btn: se viste solo. Esa era la otra atadura
+ * al taller.
+ *
+ * ── Lo que resuelve en celular ────────────────────────────────────
+ *
+ * dvh y no vh. En un teléfono, 100vh es la altura CON la barra del navegador
+ * retraída: un panel de 100vh queda siempre más alto que lo que se ve, y al
+ * abrirse el teclado la diferencia se vuelve enorme. dvh sigue al viewport de
+ * verdad, teclado incluido.
+ *
+ * No ocupa toda la pantalla. Es una hoja que sube desde abajo y deja ver el
+ * taller arriba: se entiende que el chat está ENCIMA de la pizarra y que
+ * cerrarlo devuelve a donde uno estaba.
+ *
+ * 16px en el campo de texto, sin excepción. Con menos, Safari de iPhone hace
+ * zoom al enfocar y deja la pantalla corrida y en otra escala. No se toca el
+ * pinch zoom para arreglar esto —eso le saca el zoom a quien lo necesita para
+ * leer—: simplemente el campo es lo bastante grande como para que el navegador
+ * no tenga que acercarlo.
+ *
+ * overscroll-behavior: contain. Sin esto, al llegar al final de los mensajes el
+ * gesto sigue de largo y arrastra la página de atrás; al cerrar el chat, el
+ * taller había quedado en otro lugar.
+ */
+
+.sau-chat-burbuja {
+  position: fixed; z-index: 60;
+  right: max(18px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  display: flex; align-items: center; gap: 8px;
+  background: var(--t-rail, #122335); color: #e9eef3;
+  border: 1px solid #1e3752; padding: 10px 14px;
+  font-family: var(--t-mono, ui-monospace, monospace);
+  font-size: 11px; letter-spacing: 0.1em;
+  box-shadow: 0 2px 10px rgba(18, 35, 53, 0.22);
+  cursor: pointer;
+}
+.sau-chat-burbuja:hover { background: #1b3148; }
+
+.sau-chat {
+  position: fixed; z-index: 60;
+  right: max(18px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  width: 380px;
+  max-width: calc(100vw - 28px);
+  height: 620px;
+  max-height: calc(100vh - 36px);
+  max-height: calc(100dvh - 36px);
+  display: flex; flex-direction: column;
+  background: var(--t-panel, #fff);
+  border: 1px solid var(--t-rule, #d3ccc0);
+  box-shadow: 0 6px 28px rgba(18, 35, 53, 0.26);
+  overscroll-behavior: contain;
+}
+
+.sau-chat-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+  padding: 12px 14px; flex: none;
+  background: var(--t-rail, #122335); color: #e9eef3;
+}
+.sau-chat-t {
+  font-family: var(--t-cond, var(--t-sans, system-ui));
+  font-weight: 700; font-size: 15px; letter-spacing: 0.02em;
+}
+.sau-chat-s {
+  font-family: var(--t-mono, ui-monospace, monospace);
+  font-size: 9.5px; letter-spacing: 0.06em; color: #8fa2b4; margin-top: 2px;
+}
+/* 40px de lado: es lo que hace falta para cerrar con el pulgar sin apuntar. */
+.sau-chat-x {
+  flex: none; width: 40px; height: 40px; margin: -8px -8px -8px 0;
+  display: grid; place-items: center;
+  color: #8fa2b4; font-size: 15px; line-height: 1; cursor: pointer;
+}
+.sau-chat-x:hover { color: #e9eef3; }
+
+.sau-chat-cuerpo {
+  flex: 1; min-height: 0;
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 14px;
+  display: flex; flex-direction: column; gap: 10px;
+  background: var(--t-ground, #e7e3db);
+}
+
+.sau-chat-vacio { font-size: 13px; color: var(--t-ink-2, #4a5c70); line-height: 1.5; }
+.sau-chat-nota {
+  font-family: var(--t-mono, ui-monospace, monospace);
+  font-size: 10px; letter-spacing: 0.05em; color: var(--t-ink-3, #7c8794); margin-top: 6px;
+}
+.sau-chat-ejemplos { display: grid; gap: 6px; margin-top: 12px; }
+.sau-chat-ejemplo {
+  text-align: left; font-size: 13px; line-height: 1.4;
+  color: var(--t-ink, #16283d);
+  background: var(--t-panel, #fff);
+  border: 1px solid var(--t-rule, #d3ccc0);
+  padding: 10px 11px; cursor: pointer;
+}
+.sau-chat-ejemplo:hover { border-color: var(--t-ink-3, #7c8794); }
+
+.sau-chat-msg {
+  font-size: 13.5px; line-height: 1.5; padding: 9px 11px; max-width: 88%;
+  overflow-wrap: anywhere;
+}
+.sau-chat-msg p { white-space: pre-wrap; }
+.sau-chat-msg.yo {
+  align-self: flex-end; background: var(--t-rail, #122335); color: #e9eef3;
+}
+.sau-chat-msg.sau {
+  align-self: flex-start;
+  background: var(--t-panel, #fff); border: 1px solid var(--t-rule, #d3ccc0);
+}
+.sau-chat-msg.sau.error {
+  background: var(--t-urgent-bg, #fbeae1); border-color: #e8c3ae; color: var(--t-urgent, #c24a16);
+}
+.sau-chat-msg.pensando {
+  color: var(--t-ink-3, #7c8794);
+  font-family: var(--t-mono, ui-monospace, monospace);
+  font-size: 11px; letter-spacing: 0.06em;
+}
+.sau-chat-fuente {
+  font-family: var(--t-mono, ui-monospace, monospace);
+  font-size: 9px; letter-spacing: 0.06em; color: var(--t-ink-3, #7c8794);
+  margin-top: 6px; border-top: 1px solid var(--t-rule-2, #e2dcd2); padding-top: 5px;
+}
+
+.sau-chat-pie {
+  display: flex; gap: 8px; align-items: flex-end; flex: none;
+  padding: 10px;
+  border-top: 1px solid var(--t-rule, #d3ccc0);
+  background: var(--t-panel, #fff);
+}
+/* 16px fijo, también en escritorio: es el tamaño con el que ningún navegador
+   necesita acercar el campo, y de paso se lee mejor. */
+.sau-chat-campo {
+  flex: 1; min-width: 0;
+  font-family: var(--t-sans, system-ui); font-size: 16px; line-height: 1.35;
+  padding: 9px 10px; resize: none; overflow-y: auto;
+  max-height: 96px;
+  border: 1px solid var(--t-rule, #d3ccc0);
+  background: #fdfcfa; color: var(--t-ink, #16283d);
+}
+.sau-chat-campo:focus {
+  outline: none; border-color: var(--t-ink, #16283d);
+  box-shadow: inset 0 -2px 0 var(--t-urgent, #c24a16);
+}
+.sau-chat-enviar {
+  flex: none; font-family: var(--t-sans, system-ui); font-weight: 600; font-size: 14px;
+  padding: 10px 14px; min-height: 40px;
+  background: var(--t-rail, #122335); color: #f2efe9;
+  border: 1px solid var(--t-rail, #122335); cursor: pointer;
+}
+.sau-chat-enviar:hover:not(:disabled) { background: #1e3752; }
+.sau-chat-enviar:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ── Celular ──────────────────────────────────────────────────────
+ * Hoja desde abajo, no pantalla completa: arriba se sigue viendo el taller.
+ * La altura la decide dvh, así que cuando sube el teclado la hoja se achica
+ * con él en vez de quedar tapada. */
+@media (max-width: 640px) {
+  .sau-chat-burbuja {
+    right: max(12px, env(safe-area-inset-right));
+    bottom: max(12px, env(safe-area-inset-bottom));
+  }
+  .sau-chat {
+    right: 0; left: 0; bottom: 0;
+    width: auto; max-width: none;
+    height: 72vh; height: 72dvh;
+    max-height: calc(100vh - 56px);
+    max-height: calc(100dvh - 56px);
+    border-left: none; border-right: none; border-bottom: none;
+    box-shadow: 0 -6px 28px rgba(18, 35, 53, 0.26);
+  }
+  .sau-chat-cuerpo { padding: 12px; }
+  .sau-chat-msg { max-width: 92%; }
+  /* El pie respeta la franja del gesto de inicio y los bordes redondeados. */
+  .sau-chat-pie {
+    padding-left:   max(10px, env(safe-area-inset-left));
+    padding-right:  max(10px, env(safe-area-inset-right));
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+  }
+}
+
+/* Poca altura: teléfono apaisado, y también vertical con el teclado abierto
+   —con interactive-widget=resizes-content el viewport se achica de verdad y
+   cae acá—. La hoja toma casi todo lo que queda y los ejemplos se guardan,
+   que es lo que empujaría el campo fuera de vista. */
+@media (max-width: 900px) and (max-height: 480px) {
+  .sau-chat { height: 92dvh; max-height: calc(100dvh - 8px); }
+  .sau-chat-ejemplos { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sau-chat-cuerpo { scroll-behavior: auto; }
+}

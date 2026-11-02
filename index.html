@@ -3,7 +3,26 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/logo.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      interactive-widget=resizes-content: cuando sube el teclado, el navegador
+      achica el viewport en vez de dejar la página del mismo alto y taparla.
+      Sin esto, un panel fijo abajo —el chat de SAU IA— queda debajo del
+      teclado y el navegador lo compensa desplazando y acercando la pantalla.
+
+      NO se toca el zoom: sin maximum-scale ni user-scalable=no. Desactivarlo
+      sería la forma fácil de evitar el acercamiento al enfocar un campo, y le
+      sacaría el zoom a quien lo necesita para leer. Eso se arregla con campos
+      de 16px, que es lo que hacen las hojas de estilo.
+
+      Tampoco se agrega viewport-fit=cover. Haría que TODA la aplicación se
+      dibuje debajo de la muesca y de la barra de gestos —para que env() tenga
+      valores— y eso es un cambio de toda SAU por una necesidad de un panel.
+      Sin cover, el navegador ya deja el contenido fuera de esas zonas. Los
+      env() del chat quedan escritos con max(), así que valen 0 y no molestan,
+      y el día que SAU entera decida ir a pantalla completa ya están puestos.
+    -->
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
     <title>SAU</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   </head>

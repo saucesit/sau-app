@@ -27,13 +27,48 @@ import { HERRAMIENTAS, ejecutarHerramienta } from '../_compartido/tools-taller.t
  */
 
 // ── Guard del experimento ─────────────────────────────────────────
-// ANTES DE HABILITAR ESTO A FORANI hay que: sacar estas dos constantes y
-// reemplazarlas por una condición real (un flag en empresa, o un permiso),
-// y agregar rate limiting — hoy no hay ninguno en todo el proyecto. El lugar
-// para ponerlo es acá, justo después de resolver al usuario y antes de la
-// primera llamada a Anthropic.
-const EMPRESA_HABILITADA = '11111111-aaaa-4aaa-8aaa-111111111111'  // TALLER SAN MARTÍN
-const USUARIOS_HABILITADOS = ['taller-a-completo@prueba.sau']
+//
+// Una lista de PARES empresa–personas, no dos listas sueltas. La diferencia
+// importa: con dos listas, cualquier habilitado de un taller quedaría
+// habilitado en el otro. Acá, cada quien entra únicamente al taller donde fue
+// nombrado, y además tiene que ser miembro activo de ese taller.
+//
+// Se nombra persona por persona a propósito. Ni el rol ni los permisos
+// habilitan SAU IA: en Forani hay tres usuarios con rol `dueno` y solo uno
+// está en esta lista.
+//
+// La misma lista está en src/pages/taller/ChatIA.jsx para no dibujar un botón
+// que el servidor va a rechazar. Si cambia una, cambia la otra; hay una prueba
+// que compara las dos y falla si se separan.
+//
+// PENDIENTE antes de abrirlo a más gente: esto tiene que pasar a ser una
+// condición real —un permiso o un flag en empresa— y hace falta rate limiting,
+// que hoy no existe en ninguna función del proyecto. El lugar para ponerlo es
+// acá, después de resolver al usuario y antes de la primera llamada a
+// Anthropic.
+const HABILITADOS = [
+  // TALLER SAN MARTÍN — entorno de prueba
+  { empresa: '11111111-aaaa-4aaa-8aaa-111111111111',
+    usuarios: ['taller-a-completo@prueba.sau'] },
+  // TALLER FORANI — producción. Solo Tefo.
+  { empresa: 'bdd20f9b-1030-434a-96de-2418afb53760',
+    usuarios: ['estefano.forani@outlook.com'] },
+]
+
+/**
+ * El taller al que esta persona puede preguntarle, o null.
+ *
+ * Recibe las empresas de las que es miembro activo: el permiso no alcanza si
+ * además no pertenece. Devuelve el id para que el resto de la función lo use
+ * como empresa de trabajo, así nunca sale del body del pedido.
+ */
+export function empresaHabilitada(correo: string, empresasDelUsuario: string[]): string | null {
+  const email = (correo || '').trim().toLowerCase()
+  if (!email) return null
+  const par = HABILITADOS.find(h =>
+    h.usuarios.includes(email) && empresasDelUsuario.includes(h.empresa))
+  return par ? par.empresa : null
+}
 
 const MODELO = 'claude-sonnet-5-5'
 const MAX_TOKENS = 1200
@@ -96,21 +131,20 @@ Deno.serve(async (req) => {
   if (!user) return json({ error: 'No autorizado' }, 401)
 
   // ── 2. El guard del experimento ─────────────────────────────────
-  const correo = (user.email ?? '').toLowerCase()
-  if (!USUARIOS_HABILITADOS.includes(correo)) {
-    return json({ error: 'SAU IA está en prueba y todavía no está habilitado para tu usuario.' }, 403)
-  }
-
-  // La empresa sale de la membresía, no del pedido.
+  // La empresa sale de la membresía, no del pedido: no hay ningún empresa_id
+  // que leer del body, así que no hay forma de pedir datos de otro taller.
   const { data: mems } = await comoUsuario
     .from('membresia')
     .select('empresa_id')
     .eq('usuario_id', user.id)
     .eq('activa', true)
 
-  const empresa = (mems ?? []).map(m => m.empresa_id).find(id => id === EMPRESA_HABILITADA)
+  const empresa = empresaHabilitada(user.email ?? '', (mems ?? []).map(m => m.empresa_id))
   if (!empresa) {
-    return json({ error: 'SAU IA está en prueba y todavía no está habilitado para tu taller.' }, 403)
+    // Un solo mensaje para los dos casos —usuario no habilitado y usuario
+    // habilitado en otro taller—: distinguirlos le diría a quien prueba
+    // dónde sí está habilitado alguien.
+    return json({ error: 'SAU IA está en prueba y todavía no está habilitada para tu usuario.' }, 403)
   }
 
   const clave = Deno.env.get('ANTHROPIC_API_KEY')

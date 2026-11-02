@@ -390,6 +390,100 @@ console.log(`${BR}8. DÓNDE SE GUARDA LA CHARLA`)
   }
 }
 
+// ── 9. A quién está habilitada SAU IA ────────────────────────────
+// Desde que hay un taller de verdad en la lista, esto deja de ser una
+// constante de laboratorio: decide si el dueño de un negocio ve o no sus
+// datos a través de un modelo. Se comprueban las dos copias de la lista y la
+// regla de pares, usuario por usuario de Forani.
+console.log(`${BR}9. QUIÉN TIENE SAU IA`)
+{
+  const fs3 = await import('node:fs')
+  const leer = (p) => fs3.readFileSync(new URL(p, import.meta.url), 'utf8')
+
+  /** Saca la lista de pares de cualquiera de los dos archivos. */
+  const extraer = (texto) => {
+    const bloque = texto.slice(texto.indexOf('const HABILITADOS'))
+    const hasta = bloque.indexOf(BR + ']')
+    const cuerpo = bloque.slice(0, hasta)
+    const pares = []
+    const re = /empresa:\s*'([0-9a-f-]+)',\s*usuarios:\s*\[([^\]]*)\]/g
+    let m
+    while ((m = re.exec(cuerpo)) !== null) {
+      pares.push({
+        empresa: m[1],
+        usuarios: [...m[2].matchAll(/'([^']+)'/g)].map(x => x[1]),
+      })
+    }
+    return pares
+  }
+
+  const front = extraer(leer('../src/pages/taller/ChatIA.jsx'))
+  const server = extraer(leer('../supabase/functions/chat-taller/index.ts'))
+
+  check('la lista del navegador se pudo leer', front.length > 0, JSON.stringify(front))
+  check('la del servidor también', server.length > 0, JSON.stringify(server))
+  check('y las dos dicen exactamente lo mismo',
+        JSON.stringify(front) === JSON.stringify(server),
+        `front=${JSON.stringify(front)} server=${JSON.stringify(server)}`)
+
+  // La regla, tal como está escrita en los dos lados.
+  const habilitada = (correo, empresas) => {
+    const email = (correo || '').trim().toLowerCase()
+    if (!email) return null
+    const par = server.find(h => h.usuarios.includes(email) && empresas.includes(h.empresa))
+    return par ? par.empresa : null
+  }
+
+  const FORANI = 'bdd20f9b-1030-434a-96de-2418afb53760'
+  const TEFO   = 'estefano.forani@outlook.com'
+
+  check('Tefo queda habilitado en Forani', habilitada(TEFO, [FORANI]) === FORANI)
+  check('y su mail no distingue mayúsculas', habilitada('Estefano.Forani@Outlook.com', [FORANI]) === FORANI)
+
+  // Los otros cuatro de Forani, nombrados uno por uno. Dos de ellos son
+  // `dueno`, que es justamente lo que NO alcanza.
+  for (const otro of ['foranigrupo@gmail.com', 'tommyalvarado88@gmail.com',
+                      'esteffanofo@gmail.com', 'administracion@grupoforani.com.ar']) {
+    check(`${otro} NO tiene SAU IA`, habilitada(otro, [FORANI]) === null)
+  }
+
+  // Nadie entra a un taller del que no es miembro, aunque esté en la lista.
+  check('Tefo no entra a San Martín', habilitada(TEFO, [EMPRESA_A]) === null)
+  check('el usuario de prueba no entra a Forani',
+        habilitada('taller-a-completo@prueba.sau', [FORANI]) === null)
+  check('sin membresías no entra nadie', habilitada(TEFO, []) === null)
+  check('un mail vacío tampoco', habilitada('', [FORANI, EMPRESA_A]) === null)
+
+  // Y el entorno de prueba sigue funcionando.
+  check('San Martín sigue habilitado para el usuario de prueba',
+        habilitada('taller-a-completo@prueba.sau', [EMPRESA_A]) === EMPRESA_A)
+
+  check('solo hay dos talleres habilitados', server.length === 2, JSON.stringify(server.map(h => h.empresa)))
+  check('y una sola persona por taller',
+        server.every(h => h.usuarios.length === 1), JSON.stringify(server))
+}
+
+// ── 10. El endpoint rechaza de verdad ────────────────────────────
+// La lista es datos; esto comprueba que el servidor la aplica. No se puede
+// probar con las cuentas de Forani —no tenemos sus contraseñas ni corresponde
+// usarlas— así que se prueba con un usuario de San Martín que NO está en la
+// lista: mismo camino de código, mismo rechazo.
+console.log(`${BR}10. EL SERVIDOR APLICA LA LISTA`)
+{
+  const noListado = await chat(operario, { pregunta: '¿Cuántos autos hay?' })
+  check('un usuario de un taller habilitado, pero no listado → 403',
+        noListado.status === 403, `status ${noListado.status}`)
+  check('el rechazo no cuenta dónde sí hay gente habilitada',
+        !/forani|san mart/i.test(JSON.stringify(noListado.body || '')),
+        JSON.stringify(noListado.body))
+
+  const coord = await chat(sinMontos, { pregunta: '¿Cuántos autos hay?' })
+  check('otro no listado, mismo rechazo', coord.status === 403)
+
+  const otra = await chat(otraEmpresa, { pregunta: '¿Cuántos autos hay?' })
+  check('y un usuario de una empresa sin SAU IA también', otra.status === 403)
+}
+
 console.log(`${BR}${'='.repeat(52)}`)
 console.log(`RESULTADO: ${ok} pasan, ${fail} fallan`)
 if (fail) console.log('Fallaron:' + BR + '  - ' + fallos.join(BR + '  - '))

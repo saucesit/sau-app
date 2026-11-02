@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import '../../styles/chatIa.css'
 
 /**
- * SAU IA: el chat de análisis del taller.
+ * SAU IA: el chat de análisis.
  *
  * EXPERIMENTAL. Se muestra solo para una empresa y un usuario. El mismo
  * recorte está en el servidor (chat-taller), que es el que manda: esto es para
@@ -11,15 +12,38 @@ import { useAuth } from '../../context/AuthContext'
  *
  * Es de consulta: pregunta en castellano, respuesta sobre los datos reales del
  * taller. No hace nada sobre los vehículos y no tiene por qué parecer que sí.
+ *
+ * El componente no sabe nada del taller salvo dónde está montado: sus estilos
+ * viven aparte y toman la paleta por variables con respaldo, así que se puede
+ * colgar de otro módulo sin tocarlo.
  */
 
-// Mismas constantes que la Edge Function. Si cambia una, cambia la otra.
-const EMPRESA_HABILITADA = '11111111-aaaa-4aaa-8aaa-111111111111'  // TALLER SAN MARTÍN
-const USUARIOS_HABILITADOS = ['taller-a-completo@prueba.sau']
+/**
+ * Quién tiene SAU IA, por ahora.
+ *
+ * Pares empresa–personas, no dos listas sueltas: cada quien entra únicamente
+ * al taller donde fue nombrado. Ni el rol ni los permisos habilitan nada —en
+ * Forani hay tres usuarios con rol `dueno` y solo uno está acá—.
+ *
+ * ESTO NO ES LA SEGURIDAD. La misma lista está en la Edge Function
+ * chat-taller, que es la que decide de verdad; acá está para no dibujar un
+ * botón que el servidor va a rechazar. Si cambia una, cambia la otra, y hay
+ * una prueba que compara las dos y falla si se separan.
+ */
+const HABILITADOS = [
+  // TALLER SAN MARTÍN — entorno de prueba
+  { empresa: '11111111-aaaa-4aaa-8aaa-111111111111',
+    usuarios: ['taller-a-completo@prueba.sau'] },
+  // TALLER FORANI — producción. Solo Tefo.
+  { empresa: 'bdd20f9b-1030-434a-96de-2418afb53760',
+    usuarios: ['estefano.forani@outlook.com'] },
+]
 
 function chatIaHabilitado(empresaActivaId, email) {
-  return empresaActivaId === EMPRESA_HABILITADA &&
-         USUARIOS_HABILITADOS.includes((email || '').toLowerCase())
+  const correo = (email || '').trim().toLowerCase()
+  if (!correo || !empresaActivaId) return false
+  return HABILITADOS.some(h =>
+    h.empresa === empresaActivaId && h.usuarios.includes(correo))
 }
 
 const EJEMPLOS = [
@@ -28,23 +52,48 @@ const EJEMPLOS = [
   '¿Qué productores ingresaron más vehículos este año?',
 ]
 
+/** Alto máximo del campo antes de que empiece a scrollear. Igual que el CSS. */
+const ALTO_MAX = 96
+
 export default function ChatIA() {
   const { empresaActivaId, user } = useAuth()
   const [abierto,  setAbierto]  = useState(false)
   const [mensajes, setMensajes] = useState([])
   const [texto,    setTexto]    = useState('')
   const [pensando, setPensando] = useState(false)
-  const casoRef = useRef(null)
-  const finRef  = useRef(null)
-  const inputRef = useRef(null)
+  const casoRef  = useRef(null)
+  const cuerpoRef = useRef(null)
+  const campoRef  = useRef(null)
 
+  // El foco al abrir va solo en pantalla grande. En un teléfono enfocar sube
+  // el teclado de entrada, y la primera impresión del chat termina siendo
+  // media pantalla de teclado sobre un panel vacío.
   useEffect(() => {
-    if (abierto) inputRef.current?.focus()
+    if (!abierto) return
+    const grande = window.matchMedia('(min-width: 641px)').matches
+    if (grande) campoRef.current?.focus()
   }, [abierto])
 
-  useEffect(() => {
-    finRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [mensajes, pensando])
+  /**
+   * Bajar la conversación moviendo SOLO el contenedor.
+   *
+   * Antes esto usaba scrollIntoView sobre un elemento del final. En un celular,
+   * con el panel fijo encima de la pizarra, el navegador resuelve ese pedido
+   * desplazando lo que haga falta —incluida la página de atrás— y al cerrar el
+   * chat el taller había quedado en otra posición.
+   */
+  useLayoutEffect(() => {
+    const c = cuerpoRef.current
+    if (c) c.scrollTop = c.scrollHeight
+  }, [mensajes, pensando, abierto])
+
+  // El campo crece con lo que se escribe hasta un tope, y vuelve a achicarse.
+  useLayoutEffect(() => {
+    const c = campoRef.current
+    if (!c) return
+    c.style.height = 'auto'
+    c.style.height = Math.min(c.scrollHeight, ALTO_MAX) + 'px'
+  }, [texto, abierto])
 
   if (!chatIaHabilitado(empresaActivaId, user?.email)) return null
 
@@ -82,9 +131,18 @@ export default function ChatIA() {
     }])
   }
 
+  function alTeclear(ev) {
+    // Enter manda, Shift+Enter hace un renglón. En celular el teclado trae su
+    // propia tecla de salto y no dispara esto, así que no estorba.
+    if (ev.key === 'Enter' && !ev.shiftKey) {
+      ev.preventDefault()
+      preguntar()
+    }
+  }
+
   if (!abierto) {
     return (
-      <button className="t-ia-burbuja" onClick={() => setAbierto(true)}
+      <button className="sau-chat-burbuja" onClick={() => setAbierto(true)}
               title="Preguntarle a SAU IA" aria-label="Abrir SAU IA">
         <svg width="18" height="18" viewBox="0 0 16 16" fill="none"
              stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
@@ -96,51 +154,57 @@ export default function ChatIA() {
   }
 
   return (
-    <aside className="t-ia" aria-label="SAU IA">
-      <header className="t-ia-head">
+    <aside className="sau-chat" aria-label="SAU IA">
+      <header className="sau-chat-head">
         <div>
-          <p className="t-ia-t">SAU IA</p>
-          <p className="t-ia-s">Consulta sobre los datos de tu taller · en prueba</p>
+          <p className="sau-chat-t">SAU IA</p>
+          <p className="sau-chat-s">Consulta sobre los datos de tu taller · en prueba</p>
         </div>
-        <button className="t-ia-x" onClick={() => setAbierto(false)} aria-label="Cerrar">✕</button>
+        <button className="sau-chat-x" onClick={() => setAbierto(false)}
+                aria-label="Cerrar SAU IA">✕</button>
       </header>
 
-      <div className="t-ia-cuerpo">
+      <div className="sau-chat-cuerpo" ref={cuerpoRef}>
         {mensajes.length === 0 && (
-          <div className="t-ia-vacio">
+          <div className="sau-chat-vacio">
             <p>Preguntá en castellano sobre los vehículos del taller. Respondo
                consultando los datos reales; si no hay información, lo digo.</p>
-            <p className="t-ia-nota">No modifico nada: solo leo.</p>
-            <div className="t-ia-ejemplos">
+            <p className="sau-chat-nota">No modifico nada: solo leo.</p>
+            <div className="sau-chat-ejemplos">
               {EJEMPLOS.map(e => (
-                <button key={e} className="t-ia-ejemplo" onClick={() => preguntar(e)}>{e}</button>
+                <button key={e} className="sau-chat-ejemplo" onClick={() => preguntar(e)}>
+                  {e}
+                </button>
               ))}
             </div>
           </div>
         )}
 
         {mensajes.map((m, i) => (
-          <div key={i} className={`t-ia-msg ${m.de}${m.error ? ' error' : ''}`}>
+          <div key={i} className={`sau-chat-msg ${m.de}${m.error ? ' error' : ''}`}>
             <p>{m.texto}</p>
             {/* Durante el experimento interesa ver de dónde salió cada número. */}
             {m.herramientas?.length > 0 && (
-              <p className="t-ia-fuente">
+              <p className="sau-chat-fuente">
                 {m.herramientas.map(h => h.nombre).join(' · ')}
               </p>
             )}
           </div>
         ))}
 
-        {pensando && <div className="t-ia-msg sau pensando"><p>Consultando los datos…</p></div>}
-        <div ref={finRef} />
+        {pensando && (
+          <div className="sau-chat-msg sau pensando"><p>Consultando los datos…</p></div>
+        )}
       </div>
 
-      <form className="t-ia-pie" onSubmit={e => { e.preventDefault(); preguntar() }}>
-        <input ref={inputRef} className="t-input" value={texto} disabled={pensando}
-               onChange={e => setTexto(e.target.value)}
-               placeholder="Preguntá sobre los vehículos del taller…"
-               aria-label="Tu pregunta" />
-        <button className="t-btn" type="submit" disabled={pensando || !texto.trim()}>
+      <form className="sau-chat-pie" onSubmit={e => { e.preventDefault(); preguntar() }}>
+        <textarea ref={campoRef} className="sau-chat-campo" rows={1}
+                  value={texto} disabled={pensando}
+                  onChange={e => setTexto(e.target.value)}
+                  onKeyDown={alTeclear}
+                  placeholder="Preguntá sobre los vehículos…"
+                  aria-label="Tu pregunta" />
+        <button className="sau-chat-enviar" type="submit" disabled={pensando || !texto.trim()}>
           Preguntar
         </button>
       </form>
