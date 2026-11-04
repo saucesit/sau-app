@@ -479,6 +479,35 @@ export function patenteLegible(p) {
     .replace(/^([A-Z]{3})(\d{3})$/, '$1 $2')
 }
 
+/**
+ * Cuándo se escribió algo, para una lista de novedades.
+ *
+ * Lo que importa en el reporte diario no es la fecha completa sino qué tan
+ * reciente es: "hoy 14:46" se lee de un vistazo y "03/11/26 14:46" obliga a
+ * calcular. Pasados dos días ya no sirve la referencia relativa y vuelve la
+ * fecha, que es lo que se necesita para ubicarla.
+ *
+ * `ahora` se puede pasar para poder probar esto sin depender del reloj.
+ */
+export function fechaCorta(iso, ahora = new Date()) {
+  const f = aFecha(iso)
+  if (!f || Number.isNaN(f.getTime())) return '—'
+
+  const hora = f.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false })
+  // Se comparan días de calendario, no 24 horas: algo de las 23:50 de anoche
+  // es "ayer", no "hace 10 horas".
+  const dia    = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  const dias   = Math.round((dia(ahora) - dia(f)) / 86400000)
+
+  if (dias === 0) return `hoy ${hora}`
+  if (dias === 1) return `ayer ${hora}`
+  // Día y mes a mano: con solo esos dos campos, toLocaleDateString ignora el
+  // '2-digit' según la versión de ICU y devuelve "2/11" en vez de "02/11".
+  const dd = String(f.getDate()).padStart(2, '0')
+  const mm = String(f.getMonth() + 1).padStart(2, '0')
+  return `${dd}/${mm} ${hora}`
+}
+
 export function fmtFecha(iso) {
   const f = aFecha(iso)
   if (!f) return '—'

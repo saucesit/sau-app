@@ -5,8 +5,14 @@ import { useAuth } from '../../context/AuthContext'
 import {
   ETAPAS_ACTIVAS, etapaLabel, excepcionCfg,
   diasEnTaller, estado, proximaAccion, patenteLegible, pendiente, fmtMonto, aFecha,
-  RUBROS, totalesAFacturar, totalesOperativos, pendienteFacturar, coincide,
+  RUBROS, totalesAFacturar, totalesOperativos, pendienteFacturar, coincide, fechaCorta,
 } from '../../lib/taller'
+
+/**
+ * Cuántas novedades entran en el panel antes de que deje de ser un vistazo.
+ * Las que sobran se cuentan al pie: el lugar para leerlas todas es la ficha.
+ */
+const TOPE_NOVEDADES = 10
 import { useCelular } from '../../lib/useCelular'
 
 /**
@@ -105,6 +111,10 @@ export default function Tablero() {
   const navigate = useNavigate()
 
   const [vehiculos, setVehiculos] = useState([])
+  // Los comentarios del reporte diario de los vehículos que están adentro,
+  // del más reciente al más viejo. Salen de la misma consulta que la última
+  // nota de cada tarjeta.
+  const [novedades, setNovedades] = useState([])
   const [cargando,  setCargando]  = useState(true)
   const [sel,       setSel]       = useState(null)
   const [busqueda,  setBusqueda]  = useState('')
@@ -144,19 +154,52 @@ export default function Tablero() {
         .from('vehiculo_monto').select('*').in('vehiculo_id', ids)
       const porId = Object.fromEntries((montos || []).map(m => [m.vehiculo_id, m]))
 
-      // Última observación del reporte diario, que es lo que de verdad se lee
-      // de un vistazo para saber qué pasa con cada auto.
+      // El reporte diario, una sola vez. De acá salen dos cosas: la última
+      // observación de cada auto —que es lo que se lee de un vistazo en su
+      // tarjeta— y la lista de novedades del panel de la derecha. Es la misma
+      // fuente, no dos: las notas viven en vehiculo_evento con tipo 'nota' y
+      // no hay ningún otro lugar donde se guarde un reporte.
+      //
+      // Ordenado por created_at, que además es el único orden posible: la
+      // bitácora no tiene updated_at y no se puede editar —la RLS solo tiene
+      // select e insert—, así que una corrección es una nota nueva.
       const { data: notas } = await supabase
         .from('vehiculo_evento')
-        .select('vehiculo_id, texto, created_at')
+        .select('id, vehiculo_id, texto, created_at, autor_id')
         .in('vehiculo_id', ids).eq('tipo', 'nota')
         .order('created_at', { ascending: false })
+
       const ultima = {}
       ;(notas || []).forEach(n => { if (!ultima[n.vehiculo_id]) ultima[n.vehiculo_id] = n.texto })
+
+      // Quién escribió cada una. El autor no se puede traer con un join
+      // embebido: autor_id apunta a auth.users y PostgREST no encuentra la
+      // relación. Se buscan todos los perfiles de una, como en la ficha.
+      // Las notas viejas de la importación no tienen autor y se muestran sin él.
+      const autores = [...new Set((notas || []).map(n => n.autor_id).filter(Boolean))]
+      let perfiles = {}
+      if (autores.length) {
+        const { data: ps } = await supabase
+          .from('profile').select('id, nombre, apellido').in('id', autores)
+        perfiles = Object.fromEntries((ps || []).map(p =>
+          [p.id, [p.nombre, p.apellido].filter(Boolean).join(' ').trim() || null]))
+      }
+
+      const porVehiculo = Object.fromEntries(autos.map(v => [v.id, v]))
+      setNovedades((notas || []).map(n => ({
+        id: n.id,
+        vehiculo_id: n.vehiculo_id,
+        texto: n.texto,
+        cuando: n.created_at,
+        autor: n.autor_id ? (perfiles[n.autor_id] || null) : null,
+        patente: porVehiculo[n.vehiculo_id]?.patente || '',
+        vehiculo: porVehiculo[n.vehiculo_id]?.vehiculo || '',
+      })))
 
       setVehiculos(autos.map(v => ({ ...v, ...(porId[v.id] || {}), ultima_nota: ultima[v.id] || null })))
     } else {
       setVehiculos([])
+      setNovedades([])
     }
     setCargando(false)
   }
@@ -325,8 +368,45 @@ export default function Tablero() {
       </main>
 
       <aside className="t-side">
-        <p className="t-eyebrow">COLA DE DECISIONES</p>
+        {/* Lo último que se anotó en los reportes diarios, de todos los autos
+            que están adentro. Es lo que permite entrar a la mañana y saber qué
+            pasó ayer sin abrir ficha por ficha. Un toque abre la ficha: en esta
+            lista no hay nada que seleccionar, se viene a leer y a ir. */}
+        <p className="t-eyebrow">REPORTE DIARIO</p>
         <h2 className="t-side-h2">No pierdas de vista</h2>
+        <div className="t-side-rule" />
+
+        {novedades.length === 0 ? (
+          <p className="t-sel-empty">
+            Todavía no hay comentarios en los reportes de los vehículos que están
+            en el taller. Se escriben desde la ficha de cada auto.
+          </p>
+        ) : (
+          <>
+            {novedades.slice(0, TOPE_NOVEDADES).map(n => (
+              <button key={n.id} className="t-nov" onClick={() => abrirFicha(n.vehiculo_id)}>
+                <div className="t-nov-head">
+                  <span className="t-nov-plate">{patenteLegible(n.patente)}</span>
+                  <span className="t-nov-cuando">{fechaCorta(n.cuando)}</span>
+                </div>
+                <p className="t-nov-texto">{n.texto}</p>
+                <div className="t-nov-pie">
+                  {n.vehiculo}
+                  {n.autor ? ` · ${n.autor}` : ''}
+                </div>
+              </button>
+            ))}
+            {novedades.length > TOPE_NOVEDADES && (
+              <p className="t-nov-mas">
+                {novedades.length - TOPE_NOVEDADES} comentario
+                {novedades.length - TOPE_NOVEDADES === 1 ? '' : 's'} más en las fichas
+              </p>
+            )}
+          </>
+        )}
+
+        <p className="t-eyebrow" style={{ marginTop: 22 }}>COLA DE DECISIONES</p>
+        <h2 className="t-side-h2">Vehículos demorados</h2>
         <div className="t-side-rule" />
 
         {cola.length === 0 ? (

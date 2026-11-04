@@ -194,6 +194,33 @@
 .t-q-why.s-urgent { color: var(--t-urgent); }
 .t-q-why.s-warn { color: var(--t-warn); }
 
+/* Novedades del reporte diario. A diferencia de la cola, acá lo que manda es
+   el texto: la patente y la fecha son la referencia, el comentario es el
+   contenido. Por eso el comentario va en tamaño de lectura y lo demás chico. */
+.t-nov {
+  display: block; width: 100%; text-align: left;
+  padding: 10px 0; border-bottom: 1px solid var(--t-rule-2);
+}
+.t-nov:hover .t-nov-plate { color: var(--t-urgent); }
+.t-nov-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.t-nov-plate { font-family: var(--t-mono); font-size: 13px; font-weight: 600; }
+.t-nov-cuando {
+  font-family: var(--t-mono); font-size: 9.5px; letter-spacing: 0.04em;
+  color: var(--t-ink-3); flex: none;
+}
+.t-nov-texto {
+  font-size: 12.5px; line-height: 1.45; color: var(--t-ink); margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+.t-nov-pie {
+  font-family: var(--t-mono); font-size: 9.5px; letter-spacing: 0.04em;
+  color: var(--t-ink-3); margin-top: 4px; overflow-wrap: anywhere;
+}
+.t-nov-mas {
+  font-family: var(--t-mono); font-size: 9.5px; letter-spacing: 0.06em;
+  color: var(--t-ink-3); padding-top: 10px;
+}
+
 .t-sel { margin-top: 22px; }
 .t-sel-empty { font-size: 12.5px; color: var(--t-ink-2); line-height: 1.5; }
 .t-sel-plate { font-family: var(--t-mono); font-size: 22px; font-weight: 600; letter-spacing: 0.02em; }
